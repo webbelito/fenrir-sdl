@@ -33,7 +33,7 @@ SHADERCROSS_ACTIONS_URL :: "https://github.com/libsdl-org/SDL_shadercross/action
 SHADER_TYPE_VERTEX :: "vertex"
 SHADER_TYPE_FRAGMENT :: "fragment"
 
-// Target formats - restore all formats
+// Target formats
 SHADER_FORMAT_SPIRV :: "SPIRV"
 SHADER_FORMAT_METAL :: "MSL"
 SHADER_FORMAT_DXIL :: "DXIL"
@@ -81,7 +81,6 @@ validate_config :: proc() -> bool {
 compile_shaders :: proc(project_root: string) -> bool {
 	log.info("Compiling shaders...")
 	
-	// Get shader directories
 	shader_src_dir := filepath.join({project_root, "assets/shaders/src"})
 	shader_bin_dir := filepath.join({project_root, "assets/shaders/bin"})
 	
@@ -97,26 +96,28 @@ compile_shaders :: proc(project_root: string) -> bool {
 		os.make_directory_all(shader_bin_dir)
 	}
 	
-	// Get path to ShaderCross executable - use lowercase for filename
 	shadercross_exe := filepath.join({SHADERCROSS_PATH, "bin/shadercross.exe"})
 	if !os.exists(shadercross_exe) {
 		log.errorf("shadercross.exe not found at '%s'. Shader compilation skipped.", shadercross_exe)
-		return true // Continue with the build even if shader compilation fails
+		return true // Continue with the build
 	}
 	
-	// Track compilation success
 	compilation_success := true
 	
-	// Read all files in the shader directory
+	// Read shader files
 	files, err := os.read_all_directory_by_path(shader_src_dir, context.allocator)
 	if err != nil {
 		log.errorf("Failed to read shader directory: %v", err)
-		return true // Continue with the build even if shader compilation fails
+		return true
 	}
 	defer delete(files)
 	
+	// Formats and extensions
+	formats := []string{SHADER_FORMAT_SPIRV, SHADER_FORMAT_METAL, SHADER_FORMAT_DXIL}
+	file_exts := []string{"spv", "metal", "dxil"}
+	
 	for file in files {
-		// Skip directories and non-shader files
+		// Skip directories and special entries
 		if file.name == "." || file.name == ".." {
 			continue
 		}
@@ -124,7 +125,7 @@ compile_shaders :: proc(project_root: string) -> bool {
 		file_name := file.name
 		log.infof("Found shader file: %s", file_name)
 		
-		// Parse the filename to extract parts
+		// Parse filename parts
 		parts := strings.split(file_name, ".")
 		defer delete(parts)
 		
@@ -133,11 +134,10 @@ compile_shaders :: proc(project_root: string) -> bool {
 			continue
 		}
 		
-		// Get shader type from the last part
+		// Extract shader type from extension
 		shader_type_str := parts[len(parts)-1]
 		shader_type: string
 		
-		// Map file extension to shader type
 		switch shader_type_str {
 		case "vert":
 			shader_type = SHADER_TYPE_VERTEX
@@ -148,10 +148,7 @@ compile_shaders :: proc(project_root: string) -> bool {
 			continue
 		}
 		
-		// Keep the original shader type abbreviation (vert/frag)
-		shader_type_abbr := parts[len(parts)-1] // e.g., "vert" or "frag"
-		
-		// Extract shader name (everything before the last two extensions)
+		// Extract shader name (everything before last two extensions)
 		shader_name: string
 		if len(parts) > 2 {
 			shader_name = strings.join(parts[:len(parts)-2], ".")
@@ -159,20 +156,17 @@ compile_shaders :: proc(project_root: string) -> bool {
 			shader_name = parts[0]
 		}
 		
-		// Compile to each target format
-		formats := []string{SHADER_FORMAT_SPIRV, SHADER_FORMAT_METAL, SHADER_FORMAT_DXIL}
-		file_exts := []string{"spv", "metal", "dxil"}
-		
+		// Compile for each target format
 		for format, i in formats {
 			file_ext := file_exts[i]
 			
-			// Output file uses name.format.type pattern (e.g., basic.spv.vert)
-			output_name := fmt.tprintf("%s.%s.%s", shader_name, file_ext, shader_type_abbr)
+			// Output name follows pattern: name.format.type (e.g., basic.spv.vert)
+			output_name := fmt.tprintf("%s.%s.%s", shader_name, file_ext, shader_type_str)
 			output_path := filepath.join({shader_bin_dir, output_name})
 			
 			log.infof("Compiling to %s: %s", format, output_name)
 			
-			// Build ShaderCross command
+			// Build and run shadercross command
 			shader_command := []string{
 				shadercross_exe,
 				file.fullpath,
@@ -183,7 +177,6 @@ compile_shaders :: proc(project_root: string) -> bool {
 				"--output", output_path,
 			}
 			
-			// Run shader compilation
 			shader_process, process_err := os.process_start({
 				command = shader_command,
 				stdin = os.stdin,
@@ -210,7 +203,7 @@ compile_shaders :: proc(project_root: string) -> bool {
 			
 			if shader_state.exit_code != 0 {
 				log.errorf("Shader compilation failed for %s to %s", file_name, format)
-				// We'll continue despite errors with MSL - they are expected for some shaders
+				// Allow MSL errors - these are expected for some shaders
 				if format != SHADER_FORMAT_METAL {
 					compilation_success = false
 				}
@@ -224,11 +217,10 @@ compile_shaders :: proc(project_root: string) -> bool {
 		log.error("Some shader compilations failed.")
 	}
 	
-	return true // Continue with the build even if shader compilation fails
+	return true
 }
 
 build_debug :: proc() -> (success: bool) {
-	// Get paths from config
 	project_root := PROJECT_ROOT
 	
 	// Create directories
@@ -247,11 +239,9 @@ build_debug :: proc() -> (success: bool) {
 		return false
 	}
 	
-	// Always build in debug mode
+	// Build in debug mode
 	output_path := filepath.join({project_root, DEBUG_EXE_NAME})
 	build_flag := "-debug"
-	
-	// Get source directory - absolute path
 	src_dir := filepath.join({project_root, "src"})
 	
 	log.info("Building project in debug mode...")
@@ -290,14 +280,13 @@ build_debug :: proc() -> (success: bool) {
 		return false
 	}
 	
-	// Copy SDL3.dll to root directory
+	// Copy SDL3.dll
 	log.info("Copying SDL3.dll...")
 	sdl_path := filepath.join({ODIN_VENDOR_PATH, "sdl3/SDL3.dll"})
 	dest_path := filepath.join({project_root, "SDL3.dll"})
 	log.infof("SDL source path: %s", sdl_path)
 	log.infof("SDL destination path: %s", dest_path)
 	
-	// Make sure the SDL3.dll exists
 	if !os.exists(sdl_path) {
 		log.errorf("SDL3.dll not found at '%s'", sdl_path)
 		return false
@@ -323,7 +312,6 @@ build_debug :: proc() -> (success: bool) {
 }
 
 build_release :: proc() -> (success: bool) {
-	// Get paths from config
 	project_root := PROJECT_ROOT
 	
 	// Create directories
@@ -342,14 +330,10 @@ build_release :: proc() -> (success: bool) {
 		return false
 	}
 	
-	// Set up build paths
+	// Build in release mode
 	release_dir := filepath.join({project_root, "bin/release"})
-	
-	// Always build in release mode
 	output_path := filepath.join({release_dir, RELEASE_EXE_NAME})
 	build_flag := "-o:speed"
-	
-	// Get source directory - absolute path
 	src_dir := filepath.join({project_root, "src"})
 	
 	log.info("Building project in release mode...")
@@ -395,7 +379,6 @@ build_release :: proc() -> (success: bool) {
 	log.infof("SDL source path: %s", sdl_path)
 	log.infof("SDL destination path: %s", dest_path)
 	
-	// Make sure the SDL3.dll exists
 	if !os.exists(sdl_path) {
 		log.errorf("SDL3.dll not found at '%s'", sdl_path)
 		return false
@@ -427,26 +410,13 @@ build_release :: proc() -> (success: bool) {
 			os.make_directory(dest_assets_dir)
 		}
 		
-		// Use robocopy to ensure all files and subdirectories are copied
-		// /E = copy subdirectories including empty ones
-		// /NFL = no file names in log
-		// /NDL = no directory names in log
-		// /NJH = no job header
-		// /NJS = no job summary
-		// /NC = no class names
-		// /NS = no file sizes
-		
+		// Use robocopy for assets
 		copy_assets_cmd := []string{
 			"robocopy", 
 			assets_dir, 
 			dest_assets_dir, 
-			"/E", 
-			"/NFL", 
-			"/NDL", 
-			"/NJH", 
-			"/NJS", 
-			"/NC", 
-			"/NS"
+			"/E", // Copy subdirectories including empty ones
+			"/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS" // Reduce output verbosity
 		}
 		
 		log.infof("Copying from %s to %s", assets_dir, dest_assets_dir)
@@ -468,11 +438,7 @@ build_release :: proc() -> (success: bool) {
 				return false
 			}
 			
-			// Robocopy return codes:
-			// 0 = No errors, no files copied
-			// 1 = Files copied successfully
-			// 2 = Extra files/dirs detected but not copied
-			// >8 = At least one failure during copy
+			// Robocopy return codes: 0-7 are successful, >8 indicates errors
 			if assets_state.exit_code > 8 {
 				log.errorf("Assets copy failed with exit code: %d", assets_state.exit_code)
 				return false
@@ -527,7 +493,7 @@ main :: proc() {
 	// Setup logging
 	context.logger = log.create_console_logger()
 	
-	// Check if we're on Windows
+	// Check platform
 	if ODIN_OS != .Windows {
 		log.error("This build script only supports Windows.")
 		os.exit(1)
