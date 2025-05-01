@@ -33,8 +33,7 @@
             "label": "Build & Run (Debug)",
             "detail": "Build and run the debug version",
             "type": "shell",
-            "command": "${workspaceFolder}\\fenrir_debug.exe",
-            "dependsOn": "Build (Debug)",
+            "command": "odin run build.odin -file; if ($LASTEXITCODE -eq 0 -and (Test-Path '${workspaceFolder}\\fenrir_debug.exe')) { & '${workspaceFolder}\\fenrir_debug.exe' } else { Write-Host 'Build failed or executable not found. Not running.' -ForegroundColor Red; exit 1 }; if (Test-Path build.exe) { Remove-Item build.exe }",
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -50,8 +49,7 @@
             "label": "Build & Run (Release)",
             "detail": "Build and run the release version",
             "type": "shell",
-            "command": "${workspaceFolder}\\bin\\release\\Fenrir.exe",
-            "dependsOn": "Build (Release)",
+            "command": "odin run build.odin -file -- release; if ($LASTEXITCODE -eq 0 -and (Test-Path '${workspaceFolder}\\bin\\release\\Fenrir.exe')) { & '${workspaceFolder}\\bin\\release\\Fenrir.exe' } else { Write-Host 'Build failed or executable not found. Not running.' -ForegroundColor Red; exit 1 }; if (Test-Path build.exe) { Remove-Item build.exe }",
             "group": "test",
             "presentation": {
                 "reveal": "always",

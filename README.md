@@ -13,7 +13,7 @@ Ensure that you have the SDL3 library available within your Odin installation (t
 This project uses [Dear ImGui](https://github.com/ocornut/imgui) for the user interface, specifically an Odin binding for ImGui with SDL3 and GPU renderer support. The build script expects to find the ImGui binding in your Odin shared directory at:
 
 ```
-%ODIN_ROOT%/shared/imgui
+C:/Users/antwah/odin/shared/imgui
 ```
 
 If the ImGui dependency is not found, the build script will show an error message with installation instructions.
@@ -24,7 +24,7 @@ To install the required version of ImGui for this project:
 
 ```bash
 # Navigate to your Odin shared directory
-cd %ODIN_ROOT%/shared
+cd C:/Users/antwah/odin/shared
 
 # Clone the repository with the specific branch for SDL3 + GPU support
 git clone https://gitlab.com/nadako/odin-imgui.git -b sdlgpu3 imgui
@@ -41,42 +41,71 @@ This project requires the `sdlgpu3` branch because:
 
 The official repository URL is: https://gitlab.com/nadako/odin-imgui/-/tree/sdlgpu3?ref_type=heads
 
+### SDL_shadercross
+This project uses [SDL_shadercross](https://github.com/libsdl-org/SDL_shadercross) for cross-compiling shaders to various formats. It's a fork of ShaderCross maintained by the SDL team. The build script expects to find SDL_shadercross installed externally to the project at:
+
+```
+C:/Users/antwah/shadercross
+```
+
+With the ShaderCross executable located in the bin subdirectory:
+
+```
+C:/Users/antwah/shadercross/bin/ShaderCross.exe
+```
+
+#### Installing SDL_shadercross
+
+Instead of building from source, you can download pre-built binaries directly from GitHub Actions:
+
+1. Visit the [SDL_shadercross Actions page](https://github.com/libsdl-org/SDL_shadercross/actions)
+2. Click on a successful workflow run (look for green checkmarks)
+3. Scroll down to the "Artifacts" section 
+4. Download the appropriate artifact for your platform:
+   - `SDL3_shadercross-VC-x64` - Windows (Visual C++)
+   - `SDL3_shadercross-mingw64` - Windows (MinGW64)
+   - `SDL3_shadercross-linux-x64` - Linux
+   - `SDL3_shadercross-macos-arm64` - macOS (Apple Silicon)
+   - `SDL3_shadercross-slrsniper` - Steam Linux Runtime
+5. Extract the downloaded zip to `C:/Users/antwah/shadercross`
+6. Ensure that the ShaderCross executable is present in the `bin` subdirectory (e.g., `C:/Users/antwah/shadercross/bin/ShaderCross.exe`)
+
+You can override these hardcoded paths at compile time:
+
+```
+odin run build.odin -file -define:SHADERCROSS_PATH="C:/your/custom/path/to/shadercross"
+```
+
 ## Build System
 
 ### Configuration
 
-The build system is configured in `build.odin` with the following constants that use environment variables or can be overridden at compile time:
+The build system is configured in `build.odin` with the following constants that can be overridden at compile time:
 
 ```odin
 // Project configuration
 PROJECT_ROOT :: #config(PROJECT_ROOT, ".")  // Current directory by default
 
 // Odin configuration
-ODIN_VENDOR_PATH :: #config(ODIN_VENDOR_PATH, os.get_env("ODIN_ROOT", "C:/odin") + "/vendor")
-ODIN_SHARED_PATH :: #config(ODIN_SHARED_PATH, os.get_env("ODIN_ROOT", "C:/odin") + "/shared")
+ODIN_VENDOR_PATH :: #config(ODIN_VENDOR_PATH, "C:/Users/antwah/odin/vendor")
+ODIN_SHARED_PATH :: #config(ODIN_SHARED_PATH, "C:/Users/antwah/odin/shared")
+
+// Tool paths
+SHADERCROSS_PATH :: #config(SHADERCROSS_PATH, "C:/Users/antwah/shadercross")
 
 // Build settings
 DEBUG_EXE_NAME :: "fenrir_debug.exe"        // Debug executable name
 RELEASE_EXE_NAME :: "Fenrir.exe"            // Release executable name
 ```
 
-You can configure the paths in several ways:
+If you need to use different paths, you can:
 
-1. **Set the ODIN_ROOT environment variable**:
-   ```
-   # Windows
-   set ODIN_ROOT=C:/path/to/odin
-   
-   # Linux/macOS
-   export ODIN_ROOT=/path/to/odin
-   ```
+1. **Edit the paths in build.odin directly** to match your environment
 
-2. **Pass configuration values at compile time**:
+2. **Override at compile time**:
    ```
-   odin run build.odin -file -define:PROJECT_ROOT="C:/your/project/path" -define:ODIN_VENDOR_PATH="C:/custom/path/to/vendor"
+   odin run build.odin -file -define:ODIN_VENDOR_PATH="C:/your/odin/vendor" -define:SHADERCROSS_PATH="C:/your/shadercross"
    ```
-
-3. **Edit the values in build.odin directly** if the automatic configuration doesn't work for your setup.
 
 ### Build Modes
 

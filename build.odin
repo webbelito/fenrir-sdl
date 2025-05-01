@@ -10,11 +10,14 @@ import "core:fmt"
 import "core:io"
 
 // Project configuration
-PROJECT_ROOT :: #config(PROJECT_ROOT,"C:/Users/antwah/odin_project/fenrir-sdl")
+PROJECT_ROOT :: #config(PROJECT_ROOT, ".")
 
 // Odin configuration
 ODIN_VENDOR_PATH :: #config(ODIN_VENDOR_PATH, "C:/Users/antwah/odin/vendor")
 ODIN_SHARED_PATH :: #config(ODIN_SHARED_PATH, "C:/Users/antwah/odin/shared")
+
+// Tool paths
+SHADERCROSS_PATH :: #config(SHADERCROSS_PATH, "C:/Users/antwah/shadercross")
 
 // Build settings
 DEBUG_EXE_NAME :: "fenrir_debug.exe"
@@ -23,6 +26,8 @@ RELEASE_EXE_NAME :: "Fenrir.exe"
 // Dependency URLs
 IMGUI_REPO_URL :: "https://gitlab.com/nadako/odin-imgui/-/tree/sdlgpu3?ref_type=heads"
 IMGUI_CLONE_CMD :: "git clone https://gitlab.com/nadako/odin-imgui.git -b sdlgpu3 imgui"
+SHADERCROSS_REPO_URL :: "https://github.com/libsdl-org/SDL_shadercross"
+SHADERCROSS_ACTIONS_URL :: "https://github.com/libsdl-org/SDL_shadercross/actions"
 
 validate_config :: proc() -> bool {
 	// Validate project root
@@ -48,10 +53,23 @@ validate_config :: proc() -> bool {
 		return false
 	}
 	
+	// Validate ShaderCross
+	shadercross_exe := filepath.join({SHADERCROSS_PATH, "bin/ShaderCross.exe"})
+	if !os.exists(shadercross_exe) {
+		log.errorf("ShaderCross binary not found at '%s'.", shadercross_exe)
+		log.errorf("Please download SDL_shadercross from GitHub Actions:")
+		log.errorf("1. Visit %s", SHADERCROSS_ACTIONS_URL)
+		log.errorf("2. Find a successful workflow run")
+		log.errorf("3. Download the appropriate artifact for your platform")
+		log.errorf("4. Extract to '%s' and ensure the binary is in the 'bin' subdirectory", SHADERCROSS_PATH)
+		log.errorf("Example: set SHADERCROSS_PATH=C:/shadercross")
+		return false
+	}
+	
 	return true
 }
 
-build_debug :: proc() {
+build_debug :: proc() -> (success: bool) {
 	// Get paths from config
 	project_root := PROJECT_ROOT
 	
@@ -88,24 +106,24 @@ build_debug :: proc() {
 	
 	if process_err != nil {
 		log.errorf("Failed to start build process: %v", process_err)
-		os.exit(1)
+		return false
 	}
 	
 	build_state, wait_err := os.process_wait(build_process)
 	if wait_err != nil {
 		log.errorf("Failed to wait for build process: %v", wait_err)
-		os.exit(1)
+		return false
 	}
 	
 	close_err := os.process_close(build_process)
 	if close_err != nil {
 		log.errorf("Failed to close build process: %v", close_err)
-		os.exit(1)
+		return false
 	}
 	
 	if build_state.exit_code != 0 {
 		log.error("Build failed")
-		os.exit(1)
+		return false
 	}
 	
 	// Copy SDL3.dll to root directory
@@ -118,15 +136,18 @@ build_debug :: proc() {
 	// Make sure the SDL3.dll exists
 	if !os.exists(sdl_path) {
 		log.errorf("SDL3.dll not found at '%s'", sdl_path)
+		return false
 	} else {
 		data, read_err := os.read_entire_file_from_path(sdl_path, context.allocator)
 		defer delete(data)
 		if read_err != nil {
 			log.errorf("Failed to read SDL3.dll: %v", read_err)
+			return false
 		} else {
 			write_err := os.write_entire_file(dest_path, data)
 			if write_err != nil {
 				log.errorf("Failed to write SDL3.dll: %v", write_err)
+				return false
 			} else {
 				log.info("Successfully copied SDL3.dll")
 			}
@@ -134,9 +155,10 @@ build_debug :: proc() {
 	}
 	
 	log.info("Debug build complete!")
+	return true
 }
 
-build_release :: proc() {
+build_release :: proc() -> (success: bool) {
 	// Get paths from config
 	project_root := PROJECT_ROOT
 	
@@ -176,24 +198,24 @@ build_release :: proc() {
 	
 	if process_err != nil {
 		log.errorf("Failed to start build process: %v", process_err)
-		os.exit(1)
+		return false
 	}
 	
 	build_state, wait_err := os.process_wait(build_process)
 	if wait_err != nil {
 		log.errorf("Failed to wait for build process: %v", wait_err)
-		os.exit(1)
+		return false
 	}
 	
 	close_err := os.process_close(build_process)
 	if close_err != nil {
 		log.errorf("Failed to close build process: %v", close_err)
-		os.exit(1)
+		return false
 	}
 	
 	if build_state.exit_code != 0 {
 		log.error("Build failed")
-		os.exit(1)
+		return false
 	}
 	
 	// Copy SDL3.dll
@@ -206,15 +228,18 @@ build_release :: proc() {
 	// Make sure the SDL3.dll exists
 	if !os.exists(sdl_path) {
 		log.errorf("SDL3.dll not found at '%s'", sdl_path)
+		return false
 	} else {
 		data, read_err := os.read_entire_file_from_path(sdl_path, context.allocator)
 		defer delete(data)
 		if read_err != nil {
 			log.errorf("Failed to read SDL3.dll: %v", read_err)
+			return false
 		} else {
 			write_err := os.write_entire_file(dest_path, data)
 			if write_err != nil {
 				log.errorf("Failed to write SDL3.dll: %v", write_err)
+				return false
 			} else {
 				log.info("Successfully copied SDL3.dll")
 			}
@@ -265,10 +290,12 @@ build_release :: proc() {
 		
 		if assets_err != nil {
 			log.errorf("Failed to start assets copy process: %v", assets_err)
+			return false
 		} else {
 			assets_state, assets_wait_err := os.process_wait(assets_process)
 			if assets_wait_err != nil {
 				log.errorf("Failed to wait for assets copy process: %v", assets_wait_err)
+				return false
 			}
 			
 			// Robocopy return codes:
@@ -278,6 +305,7 @@ build_release :: proc() {
 			// >8 = At least one failure during copy
 			if assets_state.exit_code > 8 {
 				log.errorf("Assets copy failed with exit code: %d", assets_state.exit_code)
+				return false
 			} else {
 				log.info("Assets directory copied successfully")
 			}
@@ -285,6 +313,7 @@ build_release :: proc() {
 			assets_close_err := os.process_close(assets_process)
 			if assets_close_err != nil {
 				log.errorf("Failed to close assets copy process: %v", assets_close_err)
+				return false
 			}
 		}
 	} else {
@@ -315,11 +344,13 @@ Created with Odin (https://odin-lang.org/) and SDL3 (https://www.libsdl.org/)
 	write_err := os.write_entire_file(readme_path, transmute([]byte)readme)
 	if write_err != nil {
 		log.errorf("Failed to create README.txt: %v", write_err)
+		return false
 	}
 	
 	log.info("Release build complete!")
 	log.info("The release package is ready in the 'bin/release' directory.")
 	log.info("You can copy this folder and run it from anywhere.")
+	return true
 }
 
 main :: proc() {
@@ -353,9 +384,18 @@ main :: proc() {
 	log.infof("Build type: %s", build_type)
 	
 	// Run the appropriate build
+	build_success := false
 	if build_type == "debug" {
-		build_debug()
+		build_success = build_debug()
 	} else {
-		build_release()
+		build_success = build_release()
 	}
+	
+	// Exit with appropriate status code
+	if !build_success {
+		log.error("Build process failed. See errors above.")
+		os.exit(1)
+	}
+	
+	log.info("Build process completed successfully.")
 } 
