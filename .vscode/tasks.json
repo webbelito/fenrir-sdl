@@ -1,0 +1,76 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build (Debug)",
+            "detail": "Build the project in debug mode for development",
+            "type": "shell",
+            "command": "odin run build.odin -file; if (Test-Path build.exe) { Remove-Item build.exe }",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build (Release)",
+            "detail": "Build the project in release mode for distribution",
+            "type": "shell",
+            "command": "odin run build.odin -file -- release; if (Test-Path build.exe) { Remove-Item build.exe }",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build & Run (Debug)",
+            "detail": "Build and run the debug version",
+            "type": "shell",
+            "command": "${workspaceFolder}\\fenrir_debug.exe",
+            "dependsOn": "Build (Debug)",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build & Run (Release)",
+            "detail": "Build and run the release version",
+            "type": "shell",
+            "command": "${workspaceFolder}\\bin\\release\\Fenrir.exe",
+            "dependsOn": "Build (Release)",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Clean Project",
+            "detail": "Remove all build outputs",
+            "type": "shell",
+            "command": "if (Test-Path fenrir_debug.exe) { Remove-Item fenrir_debug.exe }; if (Test-Path SDL3.dll) { Remove-Item SDL3.dll }; if (Test-Path build.exe) { Remove-Item build.exe }; if (Test-Path bin\\release) { Remove-Item -Recurse -Force bin\\release }",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}
