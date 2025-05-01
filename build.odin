@@ -81,19 +81,25 @@ validate_config :: proc() -> bool {
 compile_shaders :: proc(project_root: string) -> bool {
 	log.info("Compiling shaders...")
 	
-	shader_src_dir := filepath.join({project_root, "assets/shaders/src"})
-	shader_bin_dir := filepath.join({project_root, "assets/shaders/bin"})
+	// Root shader directories
+	shader_src_root := filepath.join({project_root, "assets/shaders/src"})
+	shader_bin_root := filepath.join({project_root, "assets/shaders/bin"})
+	
+	// Create specific directories for game and editor
+	game_src_dir := filepath.join({shader_src_root, "game"})
+	game_bin_dir := filepath.join({shader_bin_root, "game"})
+	editor_src_dir := filepath.join({shader_src_root, "editor"})
+	editor_bin_dir := filepath.join({shader_bin_root, "editor"})
 	
 	// Ensure directories exist
-	if !os.exists(shader_src_dir) {
-		log.warnf("Shader source directory '%s' not found. Creating...", shader_src_dir)
-		os.make_directory_all(shader_src_dir)
-		return true // No shaders to compile yet
-	}
+	os.make_directory_all(game_src_dir)
+	os.make_directory_all(game_bin_dir)
 	
-	if !os.exists(shader_bin_dir) {
-		log.infof("Creating shader bin directory '%s'", shader_bin_dir)
-		os.make_directory_all(shader_bin_dir)
+	// Only create editor directories in debug mode
+	is_debug := #defined(ODIN_DEBUG)
+	if is_debug {
+		os.make_directory_all(editor_src_dir)
+		os.make_directory_all(editor_bin_dir)
 	}
 	
 	shadercross_exe := filepath.join({SHADERCROSS_PATH, "bin/shadercross.exe"})
@@ -104,17 +110,59 @@ compile_shaders :: proc(project_root: string) -> bool {
 	
 	compilation_success := true
 	
-	// Read shader files
-	files, err := os.read_all_directory_by_path(shader_src_dir, context.allocator)
-	if err != nil {
-		log.errorf("Failed to read shader directory: %v", err)
-		return true
-	}
-	defer delete(files)
-	
 	// Formats and extensions
 	formats := []string{SHADER_FORMAT_SPIRV, SHADER_FORMAT_METAL, SHADER_FORMAT_DXIL}
 	file_exts := []string{"spv", "metal", "dxil"}
+	
+	// Compile game shaders (always)
+	log.info("Compiling game shaders...")
+	
+	if !compile_shaders_in_directory(game_src_dir, game_bin_dir, formats, file_exts, shadercross_exe) {
+		compilation_success = false
+	}
+	
+	// Compile editor shaders (only in debug mode)
+	if is_debug {
+		log.info("Compiling editor shaders...")
+		
+		if !compile_shaders_in_directory(editor_src_dir, editor_bin_dir, formats, file_exts, shadercross_exe) {
+			compilation_success = false
+		}
+	}
+	
+	if compilation_success {
+		log.info("Shader compilation completed successfully.")
+	} else {
+		log.error("Some shader compilations failed.")
+	}
+	
+	return true
+}
+
+// Helper function to compile shaders in a specific directory
+compile_shaders_in_directory :: proc(src_dir: string, bin_dir: string, 
+                                   formats: []string, file_exts: []string, 
+                                   shadercross_exe: string) -> bool {
+	// Check if the source directory exists
+	if !os.exists(src_dir) {
+		log.warnf("Shader source directory '%s' not found.", src_dir)
+		return true // No shaders to compile
+	}
+	
+	// Ensure the bin directory exists
+	if !os.exists(bin_dir) {
+		os.make_directory_all(bin_dir)
+	}
+	
+	// Read shader files
+	files, err := os.read_all_directory_by_path(src_dir, context.allocator)
+	if err != nil {
+		log.errorf("Failed to read shader directory: %v", err)
+		return false
+	}
+	defer delete(files)
+	
+	compilation_success := true
 	
 	for file in files {
 		// Skip directories and special entries
@@ -162,7 +210,7 @@ compile_shaders :: proc(project_root: string) -> bool {
 			
 			// Output name follows pattern: name.format.type (e.g., basic.spv.vert)
 			output_name := fmt.tprintf("%s.%s.%s", shader_name, file_ext, shader_type_str)
-			output_path := filepath.join({shader_bin_dir, output_name})
+			output_path := filepath.join({bin_dir, output_name})
 			
 			log.infof("Compiling to %s: %s", format, output_name)
 			
@@ -211,13 +259,7 @@ compile_shaders :: proc(project_root: string) -> bool {
 		}
 	}
 	
-	if compilation_success {
-		log.info("Shader compilation completed successfully.")
-	} else {
-		log.error("Some shader compilations failed.")
-	}
-	
-	return true
+	return compilation_success
 }
 
 build_debug :: proc() -> (success: bool) {
@@ -227,10 +269,13 @@ build_debug :: proc() -> (success: bool) {
 	log.info("Creating directory structure...")
 	os.make_directory_all(filepath.join({project_root, "assets/meshes"}))
 	os.make_directory_all(filepath.join({project_root, "assets/scenes"}))
-	os.make_directory_all(filepath.join({project_root, "assets/shaders/bin"}))
-	os.make_directory_all(filepath.join({project_root, "assets/shaders/src"}))
+	os.make_directory_all(filepath.join({project_root, "assets/shaders/src/game"}))
+	os.make_directory_all(filepath.join({project_root, "assets/shaders/src/editor"}))
+	os.make_directory_all(filepath.join({project_root, "assets/shaders/bin/game"}))
+	os.make_directory_all(filepath.join({project_root, "assets/shaders/bin/editor"}))
 	os.make_directory_all(filepath.join({project_root, "assets/textures"}))
-	os.make_directory_all(filepath.join({project_root, "src"}))
+	os.make_directory_all(filepath.join({project_root, "src/game"}))
+	os.make_directory_all(filepath.join({project_root, "src/editor"}))
 	os.make_directory_all(filepath.join({project_root, "bin/release"}))
 	
 	// Compile shaders
@@ -241,18 +286,30 @@ build_debug :: proc() -> (success: bool) {
 	
 	// Build in debug mode
 	output_path := filepath.join({project_root, DEBUG_EXE_NAME})
-	build_flag := "-debug"
+	
+	// Build with debug flag - this automatically defines ODIN_DEBUG
+	build_flags := []string{"-debug"}
+	
+	// Source directory
 	src_dir := filepath.join({project_root, "src"})
 	
-	log.info("Building project in debug mode...")
+	log.info("Building project in debug mode with editor...")
 	log.infof("Source directory: %s", src_dir)
 	log.infof("Output path: %s", output_path)
 	
-	command := []string{"odin", "build", src_dir, build_flag, fmt.tprintf("-out:%s", output_path)}
+	// Create full command with all build flags
+	command := make([dynamic]string)
+	append(&command, "odin")
+	append(&command, "build")
+	append(&command, src_dir)
+	for flag in build_flags {
+		append(&command, flag)
+	}
+	append(&command, fmt.tprintf("-out:%s", output_path))
 	
 	// Run the build command
 	build_process, process_err := os.process_start({
-		command = command,
+		command = slice.clone(command[:]), // Convert dynamic array to slice
 		stdin = os.stdin,
 		stdout = os.stdout,
 		stderr = os.stderr,
@@ -318,13 +375,16 @@ build_release :: proc() -> (success: bool) {
 	log.info("Creating directory structure...")
 	os.make_directory_all(filepath.join({project_root, "assets/meshes"}))
 	os.make_directory_all(filepath.join({project_root, "assets/scenes"}))
-	os.make_directory_all(filepath.join({project_root, "assets/shaders/bin"}))
-	os.make_directory_all(filepath.join({project_root, "assets/shaders/src"}))
+	os.make_directory_all(filepath.join({project_root, "assets/shaders/src/game"}))
+	// No editor folder needed for release
+	os.make_directory_all(filepath.join({project_root, "assets/shaders/bin/game"}))
+	// No editor shader output needed for release
 	os.make_directory_all(filepath.join({project_root, "assets/textures"}))
-	os.make_directory_all(filepath.join({project_root, "src"}))
+	os.make_directory_all(filepath.join({project_root, "src/game"}))
+	os.make_directory_all(filepath.join({project_root, "src/editor"}))  // Still needed for compilation
 	os.make_directory_all(filepath.join({project_root, "bin/release"}))
 	
-	// Compile shaders
+	// Compile shaders (editor shaders won't be compiled in release mode)
 	if !compile_shaders(project_root) {
 		log.error("Shader compilation failed. Build aborted.")
 		return false
@@ -333,18 +393,29 @@ build_release :: proc() -> (success: bool) {
 	// Build in release mode
 	release_dir := filepath.join({project_root, "bin/release"})
 	output_path := filepath.join({release_dir, RELEASE_EXE_NAME})
-	build_flag := "-o:speed"
+	
+	// Build with optimization flag, but no debug flag and no ODIN_DEBUG define
+	build_flags := []string{"-o:speed"}
+	
 	src_dir := filepath.join({project_root, "src"})
 	
-	log.info("Building project in release mode...")
+	log.info("Building project in release mode (no editor)...")
 	log.infof("Source directory: %s", src_dir)
 	log.infof("Output path: %s", output_path)
 	
-	command := []string{"odin", "build", src_dir, build_flag, fmt.tprintf("-out:%s", output_path)}
+	// Create full command with all build flags
+	command := make([dynamic]string)
+	append(&command, "odin")
+	append(&command, "build")
+	append(&command, src_dir)
+	for flag in build_flags {
+		append(&command, flag)
+	}
+	append(&command, fmt.tprintf("-out:%s", output_path))
 	
 	// Run the build command
 	build_process, process_err := os.process_start({
-		command = command,
+		command = slice.clone(command[:]), // Convert dynamic array to slice
 		stdin = os.stdin,
 		stdout = os.stdout,
 		stderr = os.stderr,
@@ -399,59 +470,44 @@ build_release :: proc() -> (success: bool) {
 		}
 	}
 	
-	// Copy assets directory
+	// Copy assets directory (no editor assets in release)
 	assets_dir := filepath.join({project_root, "assets"})
 	if os.exists(assets_dir) && os.is_dir(assets_dir) {
-		log.info("Copying assets directory...")
+		log.info("Copying game assets...")
 		dest_assets_dir := filepath.join({release_dir, "assets"})
 		
-		// Create the destination assets directory if it doesn't exist
+		// Create the destination assets directory
 		if !os.exists(dest_assets_dir) {
 			os.make_directory(dest_assets_dir)
 		}
 		
-		// Use robocopy for assets
-		copy_assets_cmd := []string{
-			"robocopy", 
-			assets_dir, 
-			dest_assets_dir, 
-			"/E", // Copy subdirectories including empty ones
-			"/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS" // Reduce output verbosity
-		}
+		// Copy all assets except editor content
+		os.make_directory_all(filepath.join({dest_assets_dir, "meshes"}))
+		os.make_directory_all(filepath.join({dest_assets_dir, "scenes"}))
+		os.make_directory_all(filepath.join({dest_assets_dir, "shaders/bin/game"}))
+		os.make_directory_all(filepath.join({dest_assets_dir, "textures"}))
 		
-		log.infof("Copying from %s to %s", assets_dir, dest_assets_dir)
+		// Copy meshes directory
+		meshes_src := filepath.join({assets_dir, "meshes"})
+		meshes_dst := filepath.join({dest_assets_dir, "meshes"})
+		copy_directory(meshes_src, meshes_dst)
 		
-		assets_process, assets_err := os.process_start({
-			command = copy_assets_cmd,
-			stdin = os.stdin,
-			stdout = os.stdout,
-			stderr = os.stderr,
-		})
+		// Copy scenes directory
+		scenes_src := filepath.join({assets_dir, "scenes"})
+		scenes_dst := filepath.join({dest_assets_dir, "scenes"})
+		copy_directory(scenes_src, scenes_dst)
 		
-		if assets_err != nil {
-			log.errorf("Failed to start assets copy process: %v", assets_err)
-			return false
-		} else {
-			assets_state, assets_wait_err := os.process_wait(assets_process)
-			if assets_wait_err != nil {
-				log.errorf("Failed to wait for assets copy process: %v", assets_wait_err)
-				return false
-			}
-			
-			// Robocopy return codes: 0-7 are successful, >8 indicates errors
-			if assets_state.exit_code > 8 {
-				log.errorf("Assets copy failed with exit code: %d", assets_state.exit_code)
-				return false
-			} else {
-				log.info("Assets directory copied successfully")
-			}
-			
-			assets_close_err := os.process_close(assets_process)
-			if assets_close_err != nil {
-				log.errorf("Failed to close assets copy process: %v", assets_close_err)
-				return false
-			}
-		}
+		// Copy game shaders bin directory
+		shaders_src := filepath.join({assets_dir, "shaders/bin/game"})
+		shaders_dst := filepath.join({dest_assets_dir, "shaders/bin/game"})
+		copy_directory(shaders_src, shaders_dst)
+		
+		// Copy textures directory
+		textures_src := filepath.join({assets_dir, "textures"})
+		textures_dst := filepath.join({dest_assets_dir, "textures"})
+		copy_directory(textures_src, textures_dst)
+		
+		log.info("Assets copied successfully")
 	} else {
 		log.warnf("Assets directory not found at '%s', skipping copy", assets_dir)
 	}
@@ -487,6 +543,56 @@ Created with Odin (https://odin-lang.org/) and SDL3 (https://www.libsdl.org/)
 	log.info("The release package is ready in the 'bin/release' directory.")
 	log.info("You can copy this folder and run it from anywhere.")
 	return true
+}
+
+// Helper to copy a directory
+copy_directory :: proc(src, dst: string) {
+	if !os.exists(src) {
+		log.warnf("Source directory '%s' does not exist", src)
+		return
+	}
+	
+	if !os.exists(dst) {
+		os.make_directory_all(dst)
+	}
+	
+	// Use robocopy on Windows for efficient directory copying
+	copy_cmd := []string{
+		"robocopy", 
+		src, 
+		dst, 
+		"/E", // Copy subdirectories including empty ones
+		"/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS" // Reduce output verbosity
+	}
+	
+	log.infof("Copying from %s to %s", src, dst)
+	
+	process, err := os.process_start({
+		command = copy_cmd,
+		stdin = os.stdin,
+		stdout = os.stdout,
+		stderr = os.stderr,
+	})
+	
+	if err != nil {
+		log.errorf("Failed to start copy process: %v", err)
+		return
+	}
+	
+	state, wait_err := os.process_wait(process)
+	if wait_err != nil {
+		log.errorf("Failed to wait for copy process: %v", wait_err)
+	}
+	
+	close_err := os.process_close(process)
+	if close_err != nil {
+		log.errorf("Failed to close copy process: %v", close_err)
+	}
+	
+	// Robocopy return codes: 0-7 are successful, >8 indicates errors
+	if state.exit_code > 8 {
+		log.errorf("Copy failed with exit code: %d", state.exit_code)
+	}
 }
 
 main :: proc() {
