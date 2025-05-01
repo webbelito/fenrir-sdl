@@ -1,5 +1,5 @@
 #+feature dynamic-literals
-package main
+package build
 
 import "core:log"
 import "core:strings"
@@ -10,14 +10,19 @@ import "core:fmt"
 import "core:io"
 
 // Project configuration
-PROJECT_ROOT :: "C:/Users/antwah/odin_project/fenrir-sdl"
+PROJECT_ROOT :: #config(PROJECT_ROOT,"C:/Users/antwah/odin_project/fenrir-sdl")
 
 // Odin configuration
-ODIN_VENDOR_PATH :: "C:/Users/antwah/odin/vendor"
+ODIN_VENDOR_PATH :: #config(ODIN_VENDOR_PATH, "C:/Users/antwah/odin/vendor")
+ODIN_SHARED_PATH :: #config(ODIN_SHARED_PATH, "C:/Users/antwah/odin/shared")
 
 // Build settings
 DEBUG_EXE_NAME :: "fenrir_debug.exe"
 RELEASE_EXE_NAME :: "Fenrir.exe"
+
+// Dependency URLs
+IMGUI_REPO_URL :: "https://gitlab.com/nadako/odin-imgui/-/tree/sdlgpu3?ref_type=heads"
+IMGUI_CLONE_CMD :: "git clone https://gitlab.com/nadako/odin-imgui.git -b sdlgpu3 imgui"
 
 validate_config :: proc() -> bool {
 	// Validate project root
@@ -30,6 +35,16 @@ validate_config :: proc() -> bool {
 	sdl_path := filepath.join({ODIN_VENDOR_PATH, "sdl3/SDL3.dll"})
 	if !os.exists(sdl_path) {
 		log.errorf("SDL3.dll not found at '%s'. Please update the ODIN_VENDOR_PATH in build.odin.", sdl_path)
+		return false
+	}
+	
+	// Validate ImGui
+	imgui_path := filepath.join({ODIN_SHARED_PATH, "imgui"})
+	if !os.exists(imgui_path) {
+		log.errorf("ImGui not found at '%s'.", imgui_path)
+		log.errorf("Please install ImGui using the following command:")
+		log.errorf("cd %s && %s", ODIN_SHARED_PATH, IMGUI_CLONE_CMD)
+		log.errorf("Repository URL: %s", IMGUI_REPO_URL)
 		return false
 	}
 	
