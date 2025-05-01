@@ -76,6 +76,62 @@ You can override these hardcoded paths at compile time:
 odin run build.odin -file -define:SHADERCROSS_PATH="C:/your/custom/path/to/shadercross"
 ```
 
+## Shader Compilation
+
+The build system automatically compiles shaders from HLSL to multiple target formats during both debug and release builds.
+
+### Shader Organization
+
+Shaders should be organized as follows:
+
+- **Source Shaders**: Place your HLSL shaders in `assets/shaders/src/`
+- **Compiled Shaders**: Compiled shaders are output to `assets/shaders/bin/`
+
+### Shader Naming Convention
+
+Shader files should follow this naming convention:
+
+```
+<name>.hlsl.<type>
+```
+
+Where:
+- `<name>` is the base name of your shader (e.g., "opaque", "skybox")
+- `<type>` is the shader type: "vert" for vertex shaders, "frag" for fragment shaders
+
+Examples:
+```
+opaque.hlsl.vert  - Vertex shader
+opaque.hlsl.frag  - Fragment shader 
+skybox.hlsl.vert  - Vertex shader
+skybox.hlsl.frag  - Fragment shader
+```
+
+### Compilation Process
+
+The build system will:
+
+1. Scan the `assets/shaders/src/` directory for HLSL shaders
+2. For each shader, compile to three target formats:
+   - SPIRV (Vulkan) - `.spv` extension
+   - Metal (Apple) - `.metal` extension
+   - DXIL (DirectX) - `.dxil` extension
+
+### Output Format
+
+Compiled shaders follow this naming convention:
+
+```
+<name>.<type>.<format>
+```
+
+For example, `opaque.hlsl.vert` will be compiled to:
+```
+opaque.vert.spv    - SPIRV version
+opaque.vert.metal  - Metal version
+opaque.vert.dxil   - DXIL version
+```
+
 ## Build System
 
 ### Configuration

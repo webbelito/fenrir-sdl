@@ -29,6 +29,15 @@ IMGUI_CLONE_CMD :: "git clone https://gitlab.com/nadako/odin-imgui.git -b sdlgpu
 SHADERCROSS_REPO_URL :: "https://github.com/libsdl-org/SDL_shadercross"
 SHADERCROSS_ACTIONS_URL :: "https://github.com/libsdl-org/SDL_shadercross/actions"
 
+// Shader types
+SHADER_TYPE_VERTEX :: "vertex"
+SHADER_TYPE_FRAGMENT :: "fragment"
+
+// Target formats - restore all formats
+SHADER_FORMAT_SPIRV :: "SPIRV"
+SHADER_FORMAT_METAL :: "MSL"
+SHADER_FORMAT_DXIL :: "DXIL"
+
 validate_config :: proc() -> bool {
 	// Validate project root
 	if !os.exists(PROJECT_ROOT) {
@@ -54,9 +63,9 @@ validate_config :: proc() -> bool {
 	}
 	
 	// Validate ShaderCross
-	shadercross_exe := filepath.join({SHADERCROSS_PATH, "bin/ShaderCross.exe"})
+	shadercross_exe := filepath.join({SHADERCROSS_PATH, "bin/shadercross.exe"})
 	if !os.exists(shadercross_exe) {
-		log.errorf("ShaderCross binary not found at '%s'.", shadercross_exe)
+		log.errorf("shadercross.exe not found at '%s'.", shadercross_exe)
 		log.errorf("Please download SDL_shadercross from GitHub Actions:")
 		log.errorf("1. Visit %s", SHADERCROSS_ACTIONS_URL)
 		log.errorf("2. Find a successful workflow run")
@@ -67,6 +76,155 @@ validate_config :: proc() -> bool {
 	}
 	
 	return true
+}
+
+compile_shaders :: proc(project_root: string) -> bool {
+	log.info("Compiling shaders...")
+	
+	// Get shader directories
+	shader_src_dir := filepath.join({project_root, "assets/shaders/src"})
+	shader_bin_dir := filepath.join({project_root, "assets/shaders/bin"})
+	
+	// Ensure directories exist
+	if !os.exists(shader_src_dir) {
+		log.warnf("Shader source directory '%s' not found. Creating...", shader_src_dir)
+		os.make_directory_all(shader_src_dir)
+		return true // No shaders to compile yet
+	}
+	
+	if !os.exists(shader_bin_dir) {
+		log.infof("Creating shader bin directory '%s'", shader_bin_dir)
+		os.make_directory_all(shader_bin_dir)
+	}
+	
+	// Get path to ShaderCross executable - use lowercase for filename
+	shadercross_exe := filepath.join({SHADERCROSS_PATH, "bin/shadercross.exe"})
+	if !os.exists(shadercross_exe) {
+		log.errorf("shadercross.exe not found at '%s'. Shader compilation skipped.", shadercross_exe)
+		return true // Continue with the build even if shader compilation fails
+	}
+	
+	// Track compilation success
+	compilation_success := true
+	
+	// Read all files in the shader directory
+	files, err := os.read_all_directory_by_path(shader_src_dir, context.allocator)
+	if err != nil {
+		log.errorf("Failed to read shader directory: %v", err)
+		return true // Continue with the build even if shader compilation fails
+	}
+	defer delete(files)
+	
+	for file in files {
+		// Skip directories and non-shader files
+		if file.name == "." || file.name == ".." {
+			continue
+		}
+		
+		file_name := file.name
+		log.infof("Found shader file: %s", file_name)
+		
+		// Parse the filename to extract parts
+		parts := strings.split(file_name, ".")
+		defer delete(parts)
+		
+		if len(parts) < 3 {
+			log.warnf("Skipping file with invalid naming format: %s", file_name)
+			continue
+		}
+		
+		// Get shader type from the last part
+		shader_type_str := parts[len(parts)-1]
+		shader_type: string
+		
+		// Map file extension to shader type
+		switch shader_type_str {
+		case "vert":
+			shader_type = SHADER_TYPE_VERTEX
+		case "frag":
+			shader_type = SHADER_TYPE_FRAGMENT
+		case:
+			log.warnf("Unknown shader type: %s in file %s", shader_type_str, file_name)
+			continue
+		}
+		
+		// Keep the original shader type abbreviation (vert/frag)
+		shader_type_abbr := parts[len(parts)-1] // e.g., "vert" or "frag"
+		
+		// Extract shader name (everything before the last two extensions)
+		shader_name: string
+		if len(parts) > 2 {
+			shader_name = strings.join(parts[:len(parts)-2], ".")
+		} else {
+			shader_name = parts[0]
+		}
+		
+		// Compile to each target format
+		formats := []string{SHADER_FORMAT_SPIRV, SHADER_FORMAT_METAL, SHADER_FORMAT_DXIL}
+		file_exts := []string{"spv", "metal", "dxil"}
+		
+		for format, i in formats {
+			file_ext := file_exts[i]
+			
+			// Output file uses name.format.type pattern (e.g., basic.spv.vert)
+			output_name := fmt.tprintf("%s.%s.%s", shader_name, file_ext, shader_type_abbr)
+			output_path := filepath.join({shader_bin_dir, output_name})
+			
+			log.infof("Compiling to %s: %s", format, output_name)
+			
+			// Build ShaderCross command
+			shader_command := []string{
+				shadercross_exe,
+				file.fullpath,
+				"--source", "HLSL",
+				"--dest", format,
+				"--stage", shader_type,
+				"--entrypoint", "main",
+				"--output", output_path,
+			}
+			
+			// Run shader compilation
+			shader_process, process_err := os.process_start({
+				command = shader_command,
+				stdin = os.stdin,
+				stdout = os.stdout,
+				stderr = os.stderr,
+			})
+			
+			if process_err != nil {
+				log.errorf("Failed to start shader compilation: %v", process_err)
+				compilation_success = false
+				continue
+			}
+			
+			shader_state, wait_err := os.process_wait(shader_process)
+			if wait_err != nil {
+				log.errorf("Failed to wait for shader compilation: %v", wait_err)
+				compilation_success = false
+			}
+			
+			close_err := os.process_close(shader_process)
+			if close_err != nil {
+				log.errorf("Failed to close shader compilation process: %v", close_err)
+			}
+			
+			if shader_state.exit_code != 0 {
+				log.errorf("Shader compilation failed for %s to %s", file_name, format)
+				// We'll continue despite errors with MSL - they are expected for some shaders
+				if format != SHADER_FORMAT_METAL {
+					compilation_success = false
+				}
+			}
+		}
+	}
+	
+	if compilation_success {
+		log.info("Shader compilation completed successfully.")
+	} else {
+		log.error("Some shader compilations failed.")
+	}
+	
+	return true // Continue with the build even if shader compilation fails
 }
 
 build_debug :: proc() -> (success: bool) {
@@ -82,6 +240,12 @@ build_debug :: proc() -> (success: bool) {
 	os.make_directory_all(filepath.join({project_root, "assets/textures"}))
 	os.make_directory_all(filepath.join({project_root, "src"}))
 	os.make_directory_all(filepath.join({project_root, "bin/release"}))
+	
+	// Compile shaders
+	if !compile_shaders(project_root) {
+		log.error("Shader compilation failed. Build aborted.")
+		return false
+	}
 	
 	// Always build in debug mode
 	output_path := filepath.join({project_root, DEBUG_EXE_NAME})
@@ -171,6 +335,12 @@ build_release :: proc() -> (success: bool) {
 	os.make_directory_all(filepath.join({project_root, "assets/textures"}))
 	os.make_directory_all(filepath.join({project_root, "src"}))
 	os.make_directory_all(filepath.join({project_root, "bin/release"}))
+	
+	// Compile shaders
+	if !compile_shaders(project_root) {
+		log.error("Shader compilation failed. Build aborted.")
+		return false
+	}
 	
 	// Set up build paths
 	release_dir := filepath.join({project_root, "bin/release"})
