@@ -46,7 +46,7 @@ log_default_logger: Logger
 // Initialize the logging system
 log_init :: proc() {
     log_default_logger.ctx = runtime.default_context()
-    log_default_logger.min_level = .VERBOSE
+    log_default_logger.min_level = .DEBUG
     log_default_logger.use_colors = true
     log_default_logger.use_multi_line = true
     log_default_logger.show_source_loc = true

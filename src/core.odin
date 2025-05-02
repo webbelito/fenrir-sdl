@@ -42,6 +42,20 @@ core_init :: proc() -> (engine: Engine, success: bool) {
         return {}, false
     }
 
+    // Initialize renderer with our window
+    ok := renderer_init(engine.window)
+    if !ok {
+        log_error(.CORE, "Failed to initialize renderer")
+        return {}, false
+    }
+
+    // Initialize ImGui with our renderer
+    ok = renderer_init_imgui(engine.window)
+    if !ok {
+        log_error(.CORE, "Failed to initialize ImGui")
+        return {}, false
+    }
+
     // Initialize game
     game, game_ok := game_init()
     if !game_ok {
@@ -55,7 +69,7 @@ core_init :: proc() -> (engine: Engine, success: bool) {
     engine.has_editor = EDITOR_MODE
     if engine.has_editor {
         // Initialize editor
-        editor, editor_ok := editor_init()
+        editor, editor_ok := editor_init(engine.window)
         if !editor_ok {
             log_error(.CORE, "Failed to initialize editor")
             return {}, false
