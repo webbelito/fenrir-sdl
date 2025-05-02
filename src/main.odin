@@ -12,11 +12,11 @@ main :: proc() {
     log.init()
     defer log.shutdown()
     
-    log.app(format = "Fenrir SDL Engine starting...")
+    log.app("Fenrir SDL Engine starting...")
     
     when EDITOR_MODE {
-        log.info(.EDITOR, format = "Starting in editor mode")
+        log.info(.EDITOR, "Starting in editor mode")
     } else {
-        log.info(.GAME, format = "Starting in game mode")
+        log.info(.GAME, "Starting in game mode")
     }
 }

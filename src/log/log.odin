@@ -27,6 +27,7 @@ Category :: enum {
     SCRIPT,   // Scripting system
     EDITOR,   // Editor-specific logs
     GAME,     // Game-specific logs
+    BUILD,    // Build system logs
 }
 
 // Logger holds a dedicated context and configuration
@@ -95,6 +96,7 @@ category_to_string :: proc(category: Category) -> string {
     case .SCRIPT:   return "SCRIPT"
     case .EDITOR:   return "EDITOR"
     case .GAME:     return "GAME"
+    case .BUILD:    return "BUILD"
     }
     return "UNKNOWN"
 }
@@ -175,7 +177,7 @@ format_message :: proc(
     if use_multi_line {
         // Multi-line format with header and message on separate lines
         header := fmt.tprintf("[%s] [%s] [%s%s%s]%s", 
-            time_str, cat_str, level_color, level_str, reset_color, loc_str)
+            cat_str, time_str, level_color, level_str, reset_color, loc_str)
             
         // Add indentation to the message
         indent := "    "
@@ -184,7 +186,7 @@ format_message :: proc(
     } else {
         // Single-line format
         return fmt.tprintf("[%s] [%s] [%s%s%s]%s %s\n", 
-            time_str, cat_str, level_color, level_str, reset_color, loc_str, message)
+            cat_str, time_str, level_color, level_str, reset_color, loc_str, message)
     }
 }
 
@@ -213,21 +215,13 @@ set_category_enabled :: proc(category: Category, enabled: bool) {
     default_logger.enabled_categories[category] = enabled
 }
 
-// Log a message with explicit logger
-log_with_logger :: proc(
-    logger: ^Logger, 
-    level: Level, 
-    category: Category, 
-    loc := #caller_location,
-    format: string, 
-    args: ..any, 
-) #no_bounds_check {
-    // Check if this message should be logged
-    if int(level) < int(logger.min_level) {
+// Core logging function
+log :: proc(level: Level, category: Category, message: string, args: ..any, loc := #caller_location) {
+    if int(level) < int(default_logger.min_level) {
         return
     }
     
-    if category in logger.enabled_categories && !logger.enabled_categories[category] {
+    if category in default_logger.enabled_categories && !default_logger.enabled_categories[category] {
         return
     }
     
@@ -235,17 +229,17 @@ log_with_logger :: proc(
     prev_context := context
     
     // Switch to logger context
-    context = logger.ctx
+    context = default_logger.ctx
     
-    message := fmt.tprintf(format, ..args)
+    formatted_message := fmt.tprintf(message, ..args)
     fmt_message := format_message(
         category, 
         level, 
-        message, 
+        formatted_message, 
         loc, 
-        logger.use_colors, 
-        logger.use_multi_line,
-        logger.show_source_loc,
+        default_logger.use_colors, 
+        default_logger.use_multi_line,
+        default_logger.show_source_loc,
     )
     fmt.eprint(fmt_message)
     
@@ -254,52 +248,73 @@ log_with_logger :: proc(
 }
 
 // Log functions for each level
-verbose :: proc(category: Category, loc := #caller_location, format: string, args: ..any) {
-    log_with_logger(&default_logger, .VERBOSE, category, loc, format, ..args)
+verbose :: proc(category: Category, message: string, args: ..any) {
+    log(.VERBOSE, category, message, ..args)
 }
 
-debug :: proc(category: Category, loc := #caller_location, format: string, args: ..any) {
-    log_with_logger(&default_logger, .DEBUG, category, loc, format, ..args)
+debug :: proc(category: Category, message: string, args: ..any) {
+    log(.DEBUG, category, message, ..args)
 }
 
-info :: proc(category: Category, loc := #caller_location, format: string, args: ..any) {
-    log_with_logger(&default_logger, .INFO, category, loc, format, ..args)
+info :: proc(category: Category, message: string, args: ..any) {
+    log(.INFO, category, message, ..args)
 }
 
-warning :: proc(category: Category, loc := #caller_location, format: string, args: ..any) {
-    log_with_logger(&default_logger, .WARNING, category, loc, format, ..args)
+warning :: proc(category: Category, message: string, args: ..any) {
+    log(.WARNING, category, message, ..args)
 }
 
-error :: proc(category: Category, loc := #caller_location, format: string, args: ..any) {
-    log_with_logger(&default_logger, .ERROR, category, loc, format, ..args)
+error :: proc(category: Category, message: string, args: ..any) {
+    log(.ERROR, category, message, ..args)
 }
 
-critical :: proc(category: Category, loc := #caller_location, format: string, args: ..any) {
-    log_with_logger(&default_logger, .CRITICAL, category, loc, format, ..args)
+critical :: proc(category: Category, message: string, args: ..any) {
+    log(.CRITICAL, category, message, ..args)
 }
 
 // Convenience functions with preset categories
-app :: proc(loc := #caller_location, format: string, args: ..any) {
-    log_with_logger(&default_logger, .INFO, .APP, loc, format, ..args)
+app :: proc(message: string, args: ..any) {
+    log(.INFO, .APP, message, ..args)
 }
 
-core :: proc(loc := #caller_location, format: string, args: ..any) {
-    log_with_logger(&default_logger, .INFO, .CORE, loc, format, ..args)
+core :: proc(message: string, args: ..any) {
+    log(.INFO, .CORE, message, ..args)
 }
 
-renderer :: proc(loc := #caller_location, format: string, args: ..any) {
-    log_with_logger(&default_logger, .INFO, .RENDERER, loc, format, ..args)
+renderer :: proc(message: string, args: ..any) {
+    log(.INFO, .RENDERER, message, ..args)
 }
 
-game :: proc(loc := #caller_location, format: string, args: ..any) {
-    log_with_logger(&default_logger, .INFO, .GAME, loc, format, ..args)
+game :: proc(message: string, args: ..any) {
+    log(.INFO, .GAME, message, ..args)
 }
 
 // Shorthand error loggers
-app_error :: proc(loc := #caller_location, format: string, args: ..any) {
-    log_with_logger(&default_logger, .ERROR, .APP, loc, format, ..args)
+app_error :: proc(message: string, args: ..any) {
+    log(.ERROR, .APP, message, ..args)
 }
 
-core_error :: proc(loc := #caller_location, format: string, args: ..any) {
-    log_with_logger(&default_logger, .ERROR, .CORE, loc, format, ..args)
-} 
+core_error :: proc(message: string, args: ..any) {
+    log(.ERROR, .CORE, message, ..args)
+}
+
+build_error :: proc(message: string, args: ..any) {
+    log(.ERROR, .BUILD, message, ..args)
+}
+
+build_warning :: proc(message: string, args: ..any) {
+    log(.WARNING, .BUILD, message, ..args)
+}
+
+// Build logging functions
+build_info :: proc(message: string, args: ..any) {
+    log(.INFO, .BUILD, message, ..args)
+}
+
+build_debug :: proc(message: string, args: ..any) {
+    log(.DEBUG, .BUILD, message, ..args)
+}
+
+build_warn :: proc(message: string, args: ..any) {
+    log(.WARNING, .BUILD, message, ..args)
+}
