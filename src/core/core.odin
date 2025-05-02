@@ -1,3 +1,4 @@
 package core
 
-// Core engine functionality
+import sdl "vendor:sdl3"
+
