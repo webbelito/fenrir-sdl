@@ -15,15 +15,4 @@ main :: proc() {
 
     // Run engine
     core_run(&engine)
-
-    log_info(.APP, "Engine shutdown successfully")
-
-    //TODO: Handle editor mode
-    /*
-    when EDITOR_MODE {
-        log.info(.EDITOR, "Starting in editor mode")
-    } else {
-        log.info(.GAME, "Starting in game mode")
-    }
-    */
 } 
