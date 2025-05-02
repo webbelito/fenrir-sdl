@@ -35,7 +35,7 @@ core_init :: proc() -> (engine: Engine, success: bool) {
     }
 
     // Create window
-    engine.window = sdl.CreateWindow(WINDIW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, {.RESIZABLE})
+    engine.window = sdl.CreateWindow(WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, {.RESIZABLE})
 
     if engine.window == nil {
         log_error(.CORE, "Failed to create window during engine initialization: %s", sdl.GetError())
@@ -46,13 +46,6 @@ core_init :: proc() -> (engine: Engine, success: bool) {
     ok := renderer_init(engine.window)
     if !ok {
         log_error(.CORE, "Failed to initialize renderer")
-        return {}, false
-    }
-
-    // Initialize ImGui with our renderer
-    ok = renderer_init_imgui(engine.window)
-    if !ok {
-        log_error(.CORE, "Failed to initialize ImGui")
         return {}, false
     }
 
@@ -128,6 +121,11 @@ core_run :: proc(engine: ^Engine) {
     for engine.is_running {
         // Process SDL Events
         for event: sdl.Event; sdl.PollEvent(&event); {
+            // Let the editor handle ImGUI events if in editor mode
+            if engine.mode == .Editor {
+                editor_process_event(&engine.editor, &event)
+            }
+            
             #partial switch event.type {
                 case .QUIT:
                     engine.is_running = false
@@ -190,7 +188,8 @@ core_shutdown :: proc(engine: ^Engine) {
         editor_shutdown(&engine.editor)
     }
 
-    // TODO: Shutdown renderer
+    // Shutdown renderer
+    renderer_shutdown()
 
     sdl.DestroyWindow(engine.window)
     sdl.Quit()

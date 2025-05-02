@@ -1,8 +1,6 @@
 package main
 
-WINDIW_TITLE :: "Fenrir"
+WINDOW_TITLE :: "Fenrir"
 
 WINDOW_WIDTH :: 1280
 WINDOW_HEIGHT :: 720
-
-HEJSA :: 123

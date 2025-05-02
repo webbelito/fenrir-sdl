@@ -1,11 +1,9 @@
 package main
 
 import "core:math/linalg"
-
 import im "shared:imgui"
 import im_sdl "shared:imgui/imgui_impl_sdl3"
 import im_sdlgpu "shared:imgui/imgui_impl_sdlgpu3"
-
 import sdl "vendor:sdl3"
 
 Renderer :: struct {
@@ -19,7 +17,6 @@ renderer: Renderer
 // Rendering system functionality
 
 renderer_init :: proc(window: ^sdl.Window) -> bool {
-
     log_info(.RENDERER, "Initializing renderer")
 
     // Create GPU device
@@ -50,39 +47,14 @@ renderer_init :: proc(window: ^sdl.Window) -> bool {
         return false
     }
 
-    // Set a clear color
-    renderer.clear_color = {0.0, 0.0, 50, 255}
+    // Set a dark blue clear color (RGB in 0-1 range)
+    renderer.clear_color = {0.0, 0.0, 0.2, 1.0}
     
     log_info(.RENDERER, "Renderer initialized successfully")
-
     return true
-
 }
 
-renderer_init_imgui :: proc(window: ^sdl.Window) -> bool {
-
-    log_info(.RENDERER, "Initializing ImGui")
-
-    // Initialize ImGui
-    im.CHECKVERSION()
-    im.CreateContext()
-    im_sdl.InitForSDLGPU(window)
-    im_sdlgpu.Init(&{
-        Device = renderer.gpu,
-        ColorTargetFormat = renderer.swapchain_texture_format,
-    })
-
-    style := im.GetStyle()
-    for &color in style.Colors {
-        color.rgb = linalg.pow(color.rgb, 2.2)
-    }
-
-    log_info(.RENDERER, "ImGui initialized successfully")
-
-    return true
-
-}
-
+// Render ImGui to screen (this function assumes ImGui's frame has been prepared by the editor)
 renderer_render_imgui :: proc(window: ^sdl.Window) {
     // Acquire the command buffer
     command_buffer := sdl.AcquireGPUCommandBuffer(renderer.gpu)
@@ -99,33 +71,35 @@ renderer_render_imgui :: proc(window: ^sdl.Window) {
         return
     }
     
-    // First, clear the screen with our blue color
-    color_target := sdl.GPUColorTargetInfo {
-        texture = swapchain_texture,
-        load_op = .CLEAR,
-        store_op = .STORE,
-        clear_color = {renderer.clear_color.x, renderer.clear_color.y, renderer.clear_color.z, renderer.clear_color.w},
-    }
-    
-    render_pass := sdl.BeginGPURenderPass(command_buffer, &color_target, 1, nil)
-    sdl.EndGPURenderPass(render_pass)
-    
-    // Now render ImGui
-    im_draw_data := im.GetDrawData()
-    
-    // Render if we have an active window
-    if swapchain_texture != nil && im_draw_data.DisplaySize.x > 0 && im_draw_data.DisplaySize.y > 0 {
-        im_sdlgpu.PrepareDrawData(im_draw_data, command_buffer)
-    
-        im_color_target := sdl.GPUColorTargetInfo{
+    if swapchain_texture != nil {
+        // First, clear the screen with our blue color
+        color_target := sdl.GPUColorTargetInfo {
             texture = swapchain_texture,
-            load_op = .LOAD,  // Load the previously cleared screen
+            load_op = .CLEAR,
             store_op = .STORE,
+            clear_color = {renderer.clear_color.x, renderer.clear_color.y, renderer.clear_color.z, renderer.clear_color.w},
         }
+        
+        render_pass := sdl.BeginGPURenderPass(command_buffer, &color_target, 1, nil)
+        sdl.EndGPURenderPass(render_pass)
+        
+        // Now render ImGui
+        im_draw_data := im.GetDrawData()
+        
+        // Render if we have an active window
+        if im_draw_data.DisplaySize.x > 0 && im_draw_data.DisplaySize.y > 0 {
+            im_sdlgpu.PrepareDrawData(im_draw_data, command_buffer)
+        
+            im_color_target := sdl.GPUColorTargetInfo{
+                texture = swapchain_texture,
+                load_op = .LOAD,  // Load the previously cleared screen
+                store_op = .STORE,
+            }
 
-        im_render_pass := sdl.BeginGPURenderPass(command_buffer, &im_color_target, 1, nil)
-        im_sdlgpu.RenderDrawData(im_draw_data, command_buffer, im_render_pass)
-        sdl.EndGPURenderPass(im_render_pass)
+            im_render_pass := sdl.BeginGPURenderPass(command_buffer, &im_color_target, 1, nil)
+            im_sdlgpu.RenderDrawData(im_draw_data, command_buffer, im_render_pass)
+            sdl.EndGPURenderPass(im_render_pass)
+        }
     }
 
     ok = sdl.SubmitGPUCommandBuffer(command_buffer)
@@ -135,13 +109,11 @@ renderer_render_imgui :: proc(window: ^sdl.Window) {
 }
 
 renderer_shutdown :: proc() {
+    log_info(.RENDERER, "Shutting down renderer")
     
-    im_sdlgpu.Shutdown()
-    im_sdl.Shutdown()
-    im.DestroyContext()
-
     if renderer.gpu != nil {
         sdl.DestroyGPUDevice(renderer.gpu)
         renderer.gpu = nil
     }
 }
+
