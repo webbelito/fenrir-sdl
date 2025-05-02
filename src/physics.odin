@@ -1,3 +1,3 @@
-package physics
+package main
 
 // Physics simulation system

@@ -7,71 +7,63 @@ import "core:path/filepath"
 import os "core:os/os2"
 import "core:fmt"
 import "core:io"
-import "./src/log"
+import logging "src"
 
 // Project configuration
 PROJECT_ROOT :: #config(PROJECT_ROOT, ".")
 
-// Odin configuration
+// Paths configuration
 ODIN_VENDOR_PATH :: #config(ODIN_VENDOR_PATH, "C:/Users/antwah/odin/vendor")
 ODIN_SHARED_PATH :: #config(ODIN_SHARED_PATH, "C:/Users/antwah/odin/shared")
-
-// Tool paths
 SHADERCROSS_PATH :: #config(SHADERCROSS_PATH, "C:/Users/antwah/shadercross")
 
 // Build settings
 DEBUG_EXE_NAME :: "fenrir_debug.exe"
 RELEASE_EXE_NAME :: "Fenrir.exe"
 
-// Dependency URLs
+// External dependencies
 IMGUI_REPO_URL :: "https://gitlab.com/nadako/odin-imgui/-/tree/sdlgpu3?ref_type=heads"
 IMGUI_CLONE_CMD :: "git clone https://gitlab.com/nadako/odin-imgui.git -b sdlgpu3 imgui"
 SHADERCROSS_REPO_URL :: "https://github.com/libsdl-org/SDL_shadercross"
 SHADERCROSS_ACTIONS_URL :: "https://github.com/libsdl-org/SDL_shadercross/actions"
 
-// Shader types
+// Shader constants
 SHADER_TYPE_VERTEX :: "vertex"
 SHADER_TYPE_FRAGMENT :: "fragment"
-
-// Target formats
 SHADER_FORMAT_SPIRV :: "SPIRV"
 SHADER_FORMAT_METAL :: "MSL"
 SHADER_FORMAT_DXIL :: "DXIL"
 
 validate_config :: proc() -> bool {
-	// Validate project root
 	if !os.exists(PROJECT_ROOT) {
-		log.build_error("Project root '%s' does not exist. Please update the build.odin file.", PROJECT_ROOT)
+		logging.log_build_error("Project root '%s' does not exist. Please update the build.odin file.", PROJECT_ROOT)
 		return false
 	}
 	
-	// Validate SDL path
 	sdl_path := filepath.join({ODIN_VENDOR_PATH, "sdl3/SDL3.dll"})
 	if !os.exists(sdl_path) {
-		log.build_error("SDL3.dll not found at '%s'. Please update the ODIN_VENDOR_PATH in build.odin.", sdl_path)
+		logging.log_build_error("SDL3.dll not found at '%s'. Please update the ODIN_VENDOR_PATH in build.odin.", sdl_path)
 		return false
 	}
 	
-	// Validate ImGui
 	imgui_path := filepath.join({ODIN_SHARED_PATH, "imgui"})
 	if !os.exists(imgui_path) {
-		log.build_error("ImGui not found at '%s'.", imgui_path)
-		log.build_error("Please install ImGui using the following command:")
-		log.build_error("cd %s && %s", ODIN_SHARED_PATH, IMGUI_CLONE_CMD)
-		log.build_error("Repository URL: %s", IMGUI_REPO_URL)
+		logging.log_build_error("ImGui not found at '%s'.", imgui_path)
+		logging.log_build_error("Please install ImGui using the following command:")
+		logging.log_build_error("cd %s && %s", ODIN_SHARED_PATH, IMGUI_CLONE_CMD)
+		logging.log_build_error("Repository URL: %s", IMGUI_REPO_URL)
 		return false
 	}
 	
-	// Validate ShaderCross
 	shadercross_exe := filepath.join({SHADERCROSS_PATH, "bin/shadercross.exe"})
 	if !os.exists(shadercross_exe) {
-		log.build_error("shadercross.exe not found at '%s'.", shadercross_exe)
-		log.build_error("Please download SDL_shadercross from GitHub Actions:")
-		log.build_error("1. Visit %s", SHADERCROSS_ACTIONS_URL)
-		log.build_error("2. Find a successful workflow run")
-		log.build_error("3. Download the appropriate artifact for your platform")
-		log.build_error("4. Extract to '%s' and ensure the binary is in the 'bin' subdirectory", SHADERCROSS_PATH)
-		log.build_error("Example: set SHADERCROSS_PATH=C:/shadercross")
+		logging.log_build_error("shadercross.exe not found at '%s'.", shadercross_exe)
+		logging.log_build_error("Please download SDL_shadercross from GitHub Actions:")
+		logging.log_build_error("1. Visit %s", SHADERCROSS_ACTIONS_URL)
+		logging.log_build_error("2. Find a successful workflow run")
+		logging.log_build_error("3. Download the appropriate artifact for your platform")
+		logging.log_build_error("4. Extract to '%s' and ensure the binary is in the 'bin' subdirectory", SHADERCROSS_PATH)
+		logging.log_build_error("Example: set SHADERCROSS_PATH=C:/shadercross")
 		return false
 	}
 	
@@ -79,23 +71,19 @@ validate_config :: proc() -> bool {
 }
 
 compile_shaders :: proc(project_root: string) -> bool {
-	log.build_info("Compiling shaders...")
+	logging.log_build_info("Compiling shaders...")
 	
-	// Root shader directories
 	shader_src_root := filepath.join({project_root, "assets/shaders/src"})
 	shader_bin_root := filepath.join({project_root, "assets/shaders/bin"})
 	
-	// Create specific directories for game and editor
 	game_src_dir := filepath.join({shader_src_root, "game"})
 	game_bin_dir := filepath.join({shader_bin_root, "game"})
 	editor_src_dir := filepath.join({shader_src_root, "editor"})
 	editor_bin_dir := filepath.join({shader_bin_root, "editor"})
 	
-	// Ensure directories exist
 	os.make_directory_all(game_src_dir)
 	os.make_directory_all(game_bin_dir)
 	
-	// Only create editor directories in debug mode
 	is_debug := #defined(ODIN_DEBUG)
 	if is_debug {
 		os.make_directory_all(editor_src_dir)
@@ -104,26 +92,23 @@ compile_shaders :: proc(project_root: string) -> bool {
 	
 	shadercross_exe := filepath.join({SHADERCROSS_PATH, "bin/shadercross.exe"})
 	if !os.exists(shadercross_exe) {
-		log.build_error("shadercross.exe not found at '%s'. Shader compilation skipped.", shadercross_exe)
+		logging.log_build_error("shadercross.exe not found at '%s'. Shader compilation skipped.", shadercross_exe)
 		return true // Continue with the build
 	}
 	
 	compilation_success := true
 	
-	// Formats and extensions
 	formats := []string{SHADER_FORMAT_SPIRV, SHADER_FORMAT_METAL, SHADER_FORMAT_DXIL}
 	file_exts := []string{"spv", "metal", "dxil"}
 	
-	// Compile game shaders (always)
-	log.build_info("Compiling game shaders...")
+	logging.log_build_info("Compiling game shaders...")
 	
 	if !compile_shaders_in_directory(game_src_dir, game_bin_dir, formats, file_exts, shadercross_exe) {
 		compilation_success = false
 	}
 	
-	// Compile editor shaders (only in debug mode)
 	if is_debug {
-		log.build_info("Compiling editor shaders...")
+		logging.log_build_info("Compiling editor shaders...")
 		
 		if !compile_shaders_in_directory(editor_src_dir, editor_bin_dir, formats, file_exts, shadercross_exe) {
 			compilation_success = false
@@ -131,33 +116,29 @@ compile_shaders :: proc(project_root: string) -> bool {
 	}
 	
 	if compilation_success {
-		log.build_info("Shader compilation completed successfully.")
+		logging.log_build_info("Shader compilation completed successfully.")
 	} else {
-		log.build_error("Some shader compilations failed.")
+		logging.log_build_error("Some shader compilations failed.")
 	}
 	
 	return true
 }
 
-// Helper function to compile shaders in a specific directory
 compile_shaders_in_directory :: proc(src_dir: string, bin_dir: string, 
                                    formats: []string, file_exts: []string, 
                                    shadercross_exe: string) -> bool {
-	// Check if the source directory exists
 	if !os.exists(src_dir) {
-		log.build_warn("Shader source directory '%s' not found.", src_dir)
+		logging.log_build_warn("Shader source directory '%s' not found.", src_dir)
 		return true // No shaders to compile
 	}
 	
-	// Ensure the bin directory exists
 	if !os.exists(bin_dir) {
 		os.make_directory_all(bin_dir)
 	}
 	
-	// Read shader files
 	files, err := os.read_all_directory_by_path(src_dir, context.allocator)
 	if err != nil {
-		log.build_error("Failed to read shader directory: %v", err)
+		logging.log_build_error("Failed to read shader directory: %v", err)
 		return false
 	}
 	defer delete(files)
@@ -165,24 +146,21 @@ compile_shaders_in_directory :: proc(src_dir: string, bin_dir: string,
 	compilation_success := true
 	
 	for file in files {
-		// Skip directories and special entries
 		if file.name == "." || file.name == ".." {
 			continue
 		}
 		
 		file_name := file.name
-		log.build_info("Found shader file: %s", file_name)
+		logging.log_build_info("Found shader file: %s", file_name)
 		
-		// Parse filename parts
 		parts := strings.split(file_name, ".")
 		defer delete(parts)
 		
 		if len(parts) < 3 {
-			log.build_warn("Skipping file with invalid naming format: %s", file_name)
+			logging.log_build_warn("Skipping file with invalid naming format: %s", file_name)
 			continue
 		}
 		
-		// Extract shader type from extension
 		shader_type_str := parts[len(parts)-1]
 		shader_type: string
 		
@@ -192,11 +170,10 @@ compile_shaders_in_directory :: proc(src_dir: string, bin_dir: string,
 		case "frag":
 			shader_type = SHADER_TYPE_FRAGMENT
 		case:
-			log.build_warn("Unknown shader type: %s in file %s", shader_type_str, file_name)
+			logging.log_build_warn("Unknown shader type: %s in file %s", shader_type_str, file_name)
 			continue
 		}
 		
-		// Extract shader name (everything before last two extensions)
 		shader_name: string
 		if len(parts) > 2 {
 			shader_name = strings.join(parts[:len(parts)-2], ".")
@@ -204,17 +181,15 @@ compile_shaders_in_directory :: proc(src_dir: string, bin_dir: string,
 			shader_name = parts[0]
 		}
 		
-		// Compile for each target format
 		for format, i in formats {
 			file_ext := file_exts[i]
 			
-			// Output name follows pattern: name.format.type (e.g., basic.spv.vert)
+			// Output name format: name.format.type (e.g., basic.spv.vert)
 			output_name := fmt.tprintf("%s.%s.%s", shader_name, file_ext, shader_type_str)
 			output_path := filepath.join({bin_dir, output_name})
 			
-			log.build_info("Compiling to %s: %s", format, output_name)
+			logging.log_build_info("Compiling to %s: %s", format, output_name)
 			
-			// Build and run shadercross command
 			shader_command := []string{
 				shadercross_exe,
 				file.fullpath,
@@ -233,24 +208,24 @@ compile_shaders_in_directory :: proc(src_dir: string, bin_dir: string,
 			})
 			
 			if process_err != nil {
-				log.build_error("Failed to start shader compilation: %v", process_err)
+				logging.log_build_error("Failed to start shader compilation: %v", process_err)
 				compilation_success = false
 				continue
 			}
 			
 			shader_state, wait_err := os.process_wait(shader_process)
 			if wait_err != nil {
-				log.build_error("Failed to wait for shader compilation: %v", wait_err)
+				logging.log_build_error("Failed to wait for shader compilation: %v", wait_err)
 				compilation_success = false
 			}
 			
 			close_err := os.process_close(shader_process)
 			if close_err != nil {
-				log.build_error("Failed to close shader compilation process: %v", close_err)
+				logging.log_build_error("Failed to close shader compilation process: %v", close_err)
 			}
 			
 			if shader_state.exit_code != 0 {
-				log.build_error("Shader compilation failed for %s to %s", file_name, format)
+				logging.log_build_error("Shader compilation failed for %s to %s", file_name, format)
 				// Allow MSL errors - these are expected for some shaders
 				if format != SHADER_FORMAT_METAL {
 					compilation_success = false
@@ -266,7 +241,7 @@ build_debug :: proc() -> (success: bool) {
 	project_root := PROJECT_ROOT
 	
 	// Create directories
-	log.build_info("Creating directory structure...")
+	logging.log_build_info("Creating directory structure...")
 	os.make_directory_all(filepath.join({project_root, "assets/meshes"}))
 	os.make_directory_all(filepath.join({project_root, "assets/scenes"}))
 	os.make_directory_all(filepath.join({project_root, "assets/shaders/src/game"}))
@@ -280,7 +255,7 @@ build_debug :: proc() -> (success: bool) {
 	
 	// Compile shaders
 	if !compile_shaders(project_root) {
-		log.build_error("Shader compilation failed. Build aborted.")
+		logging.log_build_error("Shader compilation failed. Build aborted.")
 		return false
 	}
 	
@@ -293,9 +268,9 @@ build_debug :: proc() -> (success: bool) {
 	// Source directory
 	src_dir := filepath.join({project_root, "src"})
 	
-	log.build_info("Building project in debug mode with editor...")
-	log.build_info("Source directory: %s", src_dir)
-	log.build_info("Output path: %s", output_path)
+	logging.log_build_info("Building project in debug mode with editor...")
+	logging.log_build_info("Source directory: %s", src_dir)
+	logging.log_build_info("Output path: %s", output_path)
 	
 	// Create full command with all build flags
 	command := make([dynamic]string)
@@ -316,55 +291,55 @@ build_debug :: proc() -> (success: bool) {
 	})
 	
 	if process_err != nil {
-		log.build_error("Failed to start build process: %v", process_err)
+		logging.log_build_error("Failed to start build process: %v", process_err)
 		return false
 	}
 	
 	build_state, wait_err := os.process_wait(build_process)
 	if wait_err != nil {
-		log.build_error("Failed to wait for build process: %v", wait_err)
+		logging.log_build_error("Failed to wait for build process: %v", wait_err)
 		return false
 	}
 	
 	close_err := os.process_close(build_process)
 	if close_err != nil {
-		log.build_error("Failed to close build process: %v", close_err)
+		logging.log_build_error("Failed to close build process: %v", close_err)
 		return false
 	}
 	
 	if build_state.exit_code != 0 {
-		log.build_error("Build failed")
+		logging.log_build_error("Build failed")
 		return false
 	}
 	
 	// Copy SDL3.dll
-	log.build_info("Copying SDL3.dll...")
+	logging.log_build_info("Copying SDL3.dll...")
 	sdl_path := filepath.join({ODIN_VENDOR_PATH, "sdl3/SDL3.dll"})
 	dest_path := filepath.join({project_root, "SDL3.dll"})
-	log.build_info("SDL source path: %s", sdl_path)
-	log.build_info("SDL destination path: %s", dest_path)
+	logging.log_build_info("SDL source path: %s", sdl_path)
+	logging.log_build_info("SDL destination path: %s", dest_path)
 	
 	if !os.exists(sdl_path) {
-		log.build_error("SDL3.dll not found at '%s'", sdl_path)
+		logging.log_build_error("SDL3.dll not found at '%s'", sdl_path)
 		return false
 	} else {
 		data, read_err := os.read_entire_file_from_path(sdl_path, context.allocator)
 		defer delete(data)
 		if read_err != nil {
-			log.build_error("Failed to read SDL3.dll: %v", read_err)
+			logging.log_build_error("Failed to read SDL3.dll: %v", read_err)
 			return false
 		} else {
 			write_err := os.write_entire_file(dest_path, data)
 			if write_err != nil {
-				log.build_error("Failed to write SDL3.dll: %v", write_err)
+				logging.log_build_error("Failed to write SDL3.dll: %v", write_err)
 				return false
 			} else {
-				log.build_info("Successfully copied SDL3.dll")
+				logging.log_build_info("Successfully copied SDL3.dll")
 			}
 		}
 	}
 	
-	log.build_info("Debug build complete!")
+	logging.log_build_info("Debug build complete!")
 	return true
 }
 
@@ -372,7 +347,7 @@ build_release :: proc() -> (success: bool) {
 	project_root := PROJECT_ROOT
 	
 	// Create directories
-	log.build_info("Creating directory structure...")
+	logging.log_build_info("Creating directory structure...")
 	os.make_directory_all(filepath.join({project_root, "assets/meshes"}))
 	os.make_directory_all(filepath.join({project_root, "assets/scenes"}))
 	os.make_directory_all(filepath.join({project_root, "assets/shaders/src/game"}))
@@ -386,7 +361,7 @@ build_release :: proc() -> (success: bool) {
 	
 	// Compile shaders (editor shaders won't be compiled in release mode)
 	if !compile_shaders(project_root) {
-		log.build_error("Shader compilation failed. Build aborted.")
+		logging.log_build_error("Shader compilation failed. Build aborted.")
 		return false
 	}
 	
@@ -399,9 +374,9 @@ build_release :: proc() -> (success: bool) {
 	
 	src_dir := filepath.join({project_root, "src"})
 	
-	log.build_info("Building project in release mode (no editor)...")
-	log.build_info("Source directory: %s", src_dir)
-	log.build_info("Output path: %s", output_path)
+	logging.log_build_info("Building project in release mode (no editor)...")
+	logging.log_build_info("Source directory: %s", src_dir)
+	logging.log_build_info("Output path: %s", output_path)
 	
 	// Create full command with all build flags
 	command := make([dynamic]string)
@@ -422,50 +397,50 @@ build_release :: proc() -> (success: bool) {
 	})
 	
 	if process_err != nil {
-		log.build_error("Failed to start build process: %v", process_err)
+		logging.log_build_error("Failed to start build process: %v", process_err)
 		return false
 	}
 	
 	build_state, wait_err := os.process_wait(build_process)
 	if wait_err != nil {
-		log.build_error("Failed to wait for build process: %v", wait_err)
+		logging.log_build_error("Failed to wait for build process: %v", wait_err)
 		return false
 	}
 	
 	close_err := os.process_close(build_process)
 	if close_err != nil {
-		log.build_error("Failed to close build process: %v", close_err)
+		logging.log_build_error("Failed to close build process: %v", close_err)
 		return false
 	}
 	
 	if build_state.exit_code != 0 {
-		log.build_error("Build failed")
+		logging.log_build_error("Build failed")
 		return false
 	}
 	
 	// Copy SDL3.dll
-	log.build_info("Copying SDL3.dll...")
+	logging.log_build_info("Copying SDL3.dll...")
 	sdl_path := filepath.join({ODIN_VENDOR_PATH, "sdl3/SDL3.dll"})
 	dest_path := filepath.join({release_dir, "SDL3.dll"})
-	log.build_info("SDL source path: %s", sdl_path)
-	log.build_info("SDL destination path: %s", dest_path)
+	logging.log_build_info("SDL source path: %s", sdl_path)
+	logging.log_build_info("SDL destination path: %s", dest_path)
 	
 	if !os.exists(sdl_path) {
-		log.build_error("SDL3.dll not found at '%s'", sdl_path)
+		logging.log_build_error("SDL3.dll not found at '%s'", sdl_path)
 		return false
 	} else {
 		data, read_err := os.read_entire_file_from_path(sdl_path, context.allocator)
 		defer delete(data)
 		if read_err != nil {
-			log.build_error("Failed to read SDL3.dll: %v", read_err)
+			logging.log_build_error("Failed to read SDL3.dll: %v", read_err)
 			return false
 		} else {
 			write_err := os.write_entire_file(dest_path, data)
 			if write_err != nil {
-				log.build_error("Failed to write SDL3.dll: %v", write_err)
+				logging.log_build_error("Failed to write SDL3.dll: %v", write_err)
 				return false
 			} else {
-				log.build_info("Successfully copied SDL3.dll")
+				logging.log_build_info("Successfully copied SDL3.dll")
 			}
 		}
 	}
@@ -473,7 +448,7 @@ build_release :: proc() -> (success: bool) {
 	// Copy assets directory (no editor assets in release)
 	assets_dir := filepath.join({project_root, "assets"})
 	if os.exists(assets_dir) && os.is_dir(assets_dir) {
-		log.build_info("Copying game assets...")
+		logging.log_build_info("Copying game assets...")
 		dest_assets_dir := filepath.join({release_dir, "assets"})
 		
 		// Create the destination assets directory
@@ -507,13 +482,13 @@ build_release :: proc() -> (success: bool) {
 		textures_dst := filepath.join({dest_assets_dir, "textures"})
 		copy_directory(textures_src, textures_dst)
 		
-		log.build_info("Assets copied successfully")
+		logging.log_build_info("Assets copied successfully")
 	} else {
-		log.build_warn("Assets directory not found at '%s', skipping copy", assets_dir)
+		logging.log_build_warn("Assets directory not found at '%s', skipping copy", assets_dir)
 	}
 	
 	// Create README.txt
-	log.build_info("Creating README.txt...")
+	logging.log_build_info("Creating README.txt...")
 	readme := `Fenrir SDL Game Engine
 ====================
 
@@ -535,20 +510,20 @@ Created with Odin (https://odin-lang.org/) and SDL3 (https://www.libsdl.org/)
 	readme_path := filepath.join({release_dir, "README.txt"})
 	write_err := os.write_entire_file(readme_path, transmute([]byte)readme)
 	if write_err != nil {
-		log.build_error("Failed to create README.txt: %v", write_err)
+		logging.log_build_error("Failed to create README.txt: %v", write_err)
 		return false
 	}
 	
-	log.build_info("Release build complete!")
-	log.build_info("The release package is ready in the 'bin/release' directory.")
-	log.build_info("You can copy this folder and run it from anywhere.")
+	logging.log_build_info("Release build complete!")
+	logging.log_build_info("The release package is ready in the 'bin/release' directory.")
+	logging.log_build_info("You can copy this folder and run it from anywhere.")
 	return true
 }
 
 // Helper to copy a directory
 copy_directory :: proc(src, dst: string) {
 	if !os.exists(src) {
-		log.build_warn("Source directory '%s' does not exist", src)
+		logging.log_build_warn("Source directory '%s' does not exist", src)
 		return
 	}
 	
@@ -565,7 +540,7 @@ copy_directory :: proc(src, dst: string) {
 		"/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS" // Reduce output verbosity
 	}
 	
-	log.build_info("Copying from %s to %s", src, dst)
+	logging.log_build_info("Copying from %s to %s", src, dst)
 	
 	process, err := os.process_start({
 		command = copy_cmd,
@@ -575,41 +550,41 @@ copy_directory :: proc(src, dst: string) {
 	})
 	
 	if err != nil {
-		log.build_error("Failed to start copy process: %v", err)
+		logging.log_build_error("Failed to start copy process: %v", err)
 		return
 	}
 	
 	state, wait_err := os.process_wait(process)
 	if wait_err != nil {
-		log.build_error("Failed to wait for copy process: %v", wait_err)
+		logging.log_build_error("Failed to wait for copy process: %v", wait_err)
 	}
 	
 	close_err := os.process_close(process)
 	if close_err != nil {
-		log.build_error("Failed to close copy process: %v", close_err)
+		logging.log_build_error("Failed to close copy process: %v", close_err)
 	}
 	
 	// Robocopy return codes: 0-7 are successful, >8 indicates errors
 	if state.exit_code > 8 {
-		log.build_error("Copy failed with exit code: %d", state.exit_code)
+		logging.log_build_error("Copy failed with exit code: %d", state.exit_code)
 	}
 }
 
 main :: proc() {
 	// Setup logging
-	log.init()
-	defer log.shutdown()
+	logging.log_init()
+	defer logging.log_shutdown()
 	
 	// Check platform
 	if ODIN_OS != .Windows {
-		log.build_error("This build script only supports Windows.")
+		logging.log_build_error("This build script only supports Windows.")
 		os.exit(1)
 	}
 	
 	// Validate configuration
-	log.build_info("Validating configuration...")
+	logging.log_build_info("Validating configuration...")
 	if !validate_config() {
-		log.build_error("Configuration validation failed. Please check the build.odin file.")
+		logging.log_build_error("Configuration validation failed. Please check the build.odin file.")
 		os.exit(1)
 	}
 	
@@ -624,7 +599,7 @@ main :: proc() {
 		}
 	}
 	
-	log.build_info("Build type: %s", build_type)
+	logging.log_build_info("Build type: %s", build_type)
 	
 	// Run the appropriate build
 	build_success := false
@@ -636,9 +611,9 @@ main :: proc() {
 	
 	// Exit with appropriate status code
 	if !build_success {
-		log.build_error("Build process failed. See errors above.")
+		logging.log_build_error("Build process failed. See errors above.")
 		os.exit(1)
 	}
 	
-	log.build_info("Build process completed successfully.")
+	logging.log_build_info("Build process completed successfully.")
 } 
