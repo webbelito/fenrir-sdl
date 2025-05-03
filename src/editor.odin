@@ -264,7 +264,7 @@ editor_render :: proc(editor: ^Editor) {
                 im.Spacing()
                 
                 // Placeholder for euler angles (will need proper conversion later)
-                euler := [3]f32{0, 0, 0}
+                rotation_x, rotation_y, rotation_z := linalg.euler_angles_xyx_from_quaternion_f32(editor.selected_node.rotation)
                 
                 // Rotation X - Red text
                 im.PushID("rot_x_btn")
@@ -274,8 +274,8 @@ editor_render :: proc(editor: ^Editor) {
                 
                 im.SameLine(0, spacing)
                 im.PushID("rot_x")
-                if im.DragFloat("##value", &euler[0], 0.1) {
-                    // TODO: Update quaternion from euler
+                if im.DragFloat("##value", &rotation_x, 0.1) {
+                    editor.selected_node.rotation = linalg.quaternion_from_euler_angle_x_f32(rotation_x)
                 }
                 im.PopID()
                 
@@ -288,8 +288,8 @@ editor_render :: proc(editor: ^Editor) {
                 
                 im.SameLine(0, spacing)
                 im.PushID("rot_y")
-                if im.DragFloat("##value", &euler[1], 0.1) {
-                    // TODO: Update quaternion from euler
+                if im.DragFloat("##value", &rotation_y, 0.1) {
+                    editor.selected_node.rotation = linalg.quaternion_from_euler_angle_y_f32(rotation_y)
                 }
                 im.PopID()
                 
@@ -302,8 +302,8 @@ editor_render :: proc(editor: ^Editor) {
                 
                 im.SameLine(0, spacing)
                 im.PushID("rot_z")
-                if im.DragFloat("##value", &euler[2], 0.1) {
-                    // TODO: Update quaternion from euler
+                if im.DragFloat("##value", &rotation_z, 0.1) {
+                    editor.selected_node.rotation = linalg.quaternion_from_euler_angle_z_f32(rotation_z)
                 }
                 im.PopID()
                 
