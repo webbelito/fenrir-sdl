@@ -12,7 +12,7 @@ Vec2i :: [2]i32
 Vec3i :: [3]i32
 Vec4i :: [4]i32
 
-Mat4 :: [4][4]f32
+Mat4 :: linalg.Matrix4x2f32
 
 Color :: sdl.Color
 

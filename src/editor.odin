@@ -25,6 +25,15 @@ Editor :: struct {
     
     // Current scene being edited
     current_scene: ^Scene,
+    
+    // Viewport camera
+    viewport_camera: Camera,
+    
+    // Camera control state
+    camera_rotation: Vec2,
+    camera_panning: bool,
+    camera_rotation_active: bool,
+    last_mouse_pos: Vec2,
 }
 
 editor_init :: proc(window: ^sdl.Window) -> (editor: Editor, success: bool) {
@@ -57,6 +66,13 @@ editor_init :: proc(window: ^sdl.Window) -> (editor: Editor, success: bool) {
     editor.show_demo_window = false
     editor.show_metrics = false
     
+    // Initialize viewport camera
+    editor.viewport_camera = camera_create()
+    editor.camera_rotation = {0, 0}
+    editor.camera_panning = false
+    editor.camera_rotation_active = false
+    editor.last_mouse_pos = {0, 0}
+    
     // Create a mock default scene with a parent and child node
     editor.current_scene = create_mock_default_scene()
     
@@ -70,9 +86,86 @@ editor_init :: proc(window: ^sdl.Window) -> (editor: Editor, success: bool) {
 
 editor_process_event :: proc(editor: ^Editor, event: ^sdl.Event) {
     im_io := im.GetIO()
+    
+    // Pass events to ImGui first
     if im_io.WantCaptureMouse || im_io.WantCaptureKeyboard {
         im_sdl.ProcessEvent(event)
+        return
     }
+    
+    // Handle events for camera controls
+    #partial switch event.type {
+        case .MOUSE_MOTION:
+            // Get current mouse position
+            current_mouse_pos := Vec2{f32(event.motion.x), f32(event.motion.y)}
+            
+            // Calculate delta from last position
+            if editor.last_mouse_pos.x != 0 && editor.last_mouse_pos.y != 0 {
+                delta_x := current_mouse_pos.x - editor.last_mouse_pos.x
+                delta_y := current_mouse_pos.y - editor.last_mouse_pos.y
+                
+                // Handle camera rotation with right mouse button
+                if editor.camera_rotation_active {
+                    editor.camera_rotation.x += delta_x * 0.01
+                    editor.camera_rotation.y += delta_y * 0.01
+                    
+                    // Clamp vertical rotation to avoid gimbal lock
+                    editor.camera_rotation.y = clamp(editor.camera_rotation.y, -1.5, 1.5)
+                    
+                    // Update camera orbit
+                    camera_orbit(&editor.viewport_camera, editor.camera_rotation.x, editor.camera_rotation.y)
+                }
+                
+                // Handle camera panning with middle mouse button
+                if editor.camera_panning {
+                    // Scale panning based on distance from target
+                    direction := editor.viewport_camera.position - editor.viewport_camera.target
+                    distance := linalg.length(direction)
+                    pan_speed := distance * 0.001
+                    
+                    // Calculate pan offset in camera space
+                    right := linalg.normalize(linalg.cross(editor.viewport_camera.target - editor.viewport_camera.position, editor.viewport_camera.up))
+                    up := linalg.normalize(editor.viewport_camera.up)
+                    
+                    pan_offset := right * (-delta_x * pan_speed) + up * (delta_y * pan_speed)
+                    camera_pan(&editor.viewport_camera, pan_offset)
+                }
+            }
+            
+            // Store current position for next frame
+            editor.last_mouse_pos = current_mouse_pos
+            
+        case .MOUSE_BUTTON_DOWN:
+            if event.button.button == 3 { // SDL3 RIGHT button is 3
+                editor.camera_rotation_active = true
+            }
+            if event.button.button == 2 { // SDL3 MIDDLE button is 2
+                editor.camera_panning = true
+            }
+            
+        case .MOUSE_BUTTON_UP:
+            if event.button.button == 3 { // SDL3 RIGHT button is 3
+                editor.camera_rotation_active = false
+            }
+            if event.button.button == 2 { // SDL3 MIDDLE button is 2
+                editor.camera_panning = false
+            }
+            
+        case .MOUSE_WHEEL:
+            // Handle zooming with mouse wheel
+            zoom_delta := f32(event.wheel.y) * 0.1
+            
+            // Calculate current distance for exponential zooming
+            direction := editor.viewport_camera.position - editor.viewport_camera.target
+            distance := linalg.length(direction)
+            
+            // Apply zoom (exponential feels more natural)
+            new_distance := distance * (1.0 - zoom_delta)
+            camera_zoom(&editor.viewport_camera, new_distance)
+    }
+    
+    // Also pass events to ImGui even if we processed them
+    im_sdl.ProcessEvent(event)
 }
 
 editor_update :: proc(editor: ^Editor, delta_time: f32) {
@@ -181,12 +274,70 @@ editor_render :: proc(editor: ^Editor) {
     im.SetNextWindowPos({300, 20})
     im.SetNextWindowSize({700, 700})
     if im.Begin("Scene View", nil) {
-        // Just use simple text for now until we better understand the ImGui bindings
-        im.Text("Scene Viewport")
-        im.Text("Background color: %.2f, %.2f, %.2f", 
-            renderer.clear_color.r, 
-            renderer.clear_color.g, 
-            renderer.clear_color.b)
+        // Get window size for viewport aspect ratio
+        viewport_size := im.GetContentRegionAvail()
+        
+        // Update camera aspect ratio if needed
+        if viewport_size.x > 0 && viewport_size.y > 0 {
+            camera_set_aspect_ratio(&editor.viewport_camera, viewport_size.x, viewport_size.y)
+            
+            // Simple placeholder for the viewport
+            // Use black background for viewport
+            im.PushStyleColor(.ChildBg, 0xFF000000)  // Pure black background
+            im.BeginChild("Viewport")
+            
+            // Display camera info
+            im.Text("Camera Position: (%.1f, %.1f, %.1f)", 
+                editor.viewport_camera.position.x,
+                editor.viewport_camera.position.y,
+                editor.viewport_camera.position.z)
+                
+            // Color-coded coordinate system indicators
+            im.TextColored({1, 0.2, 0.2, 1}, "X")
+            im.SameLine()
+            im.TextColored({0.2, 1, 0.2, 1}, "Y")
+            im.SameLine()
+            im.TextColored({0.2, 0.2, 1, 1}, "Z")
+            
+            // Draw simple placeholder for nodes
+            if editor.current_scene != nil {
+                im.Separator()
+                im.Text("Nodes in viewport:")
+                
+                for node in editor.current_scene.nodes {
+                    if !node.is_active do continue
+                    
+                    // Highlight selected node
+                    if node == editor.selected_node {
+                        im.Text("* %s (%.0f, %.0f, %.0f)", 
+                            node.name, 
+                            f32(node.position.x), 
+                            f32(node.position.y), 
+                            f32(node.position.z))
+                    } else {
+                        im.Text("  %s (%.0f, %.0f, %.0f)", 
+                            node.name, 
+                            f32(node.position.x), 
+                            f32(node.position.y), 
+                            f32(node.position.z))
+                    }
+                    
+                    // Handle clicking to select node
+                    if im.IsItemClicked() {
+                        editor.selected_node = node
+                    }
+                }
+            }
+            
+            // Camera controls help text
+            im.Separator()
+            im.Text("Camera Controls:")
+            im.Text("Right Mouse: Orbit | Middle Mouse: Pan | Scroll: Zoom")
+            
+            im.EndChild()
+            im.PopStyleColor()
+        }
+        
         im.End()
     }
     
