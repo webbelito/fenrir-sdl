@@ -87,7 +87,7 @@ renderer_render_imgui :: proc(window: ^sdl.Window) {
         im_draw_data := im.GetDrawData()
         
         // Render if we have an active window
-        if im_draw_data.DisplaySize.x > 0 && im_draw_data.DisplaySize.y > 0 {
+        if im_draw_data.DisplaySize.x > 0.0 && im_draw_data.DisplaySize.y > 0.0 {
             im_sdlgpu.PrepareDrawData(im_draw_data, command_buffer)
         
             im_color_target := sdl.GPUColorTargetInfo{
@@ -99,6 +99,8 @@ renderer_render_imgui :: proc(window: ^sdl.Window) {
             im_render_pass := sdl.BeginGPURenderPass(command_buffer, &im_color_target, 1, nil)
             im_sdlgpu.RenderDrawData(im_draw_data, command_buffer, im_render_pass)
             sdl.EndGPURenderPass(im_render_pass)
+        } else {
+            log_warning(.RENDERER, "Display size invalid: %.1f x %.1f", im_draw_data.DisplaySize.x, im_draw_data.DisplaySize.y)
         }
     }
 

@@ -1,5 +1,7 @@
 package main
 
+import "core:math/linalg"
+
 import sdl "vendor:sdl3"
 
 Vec2 :: [2]f32
@@ -14,3 +16,4 @@ Mat4 :: [4][4]f32
 
 Color :: sdl.Color
 
+Quat :: linalg.Quaternionf32

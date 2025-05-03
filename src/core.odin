@@ -114,11 +114,13 @@ core_toggle_pause :: proc(engine: ^Engine) {
 }
 
 core_run :: proc(engine: ^Engine) {
- 
     log_info(.CORE, "Running engine")
-
+    frame_count := 0
+    
     // Main loop
     for engine.is_running {
+        frame_count += 1
+        
         // Process SDL Events
         for event: sdl.Event; sdl.PollEvent(&event); {
             // Let the editor handle ImGUI events if in editor mode
@@ -128,6 +130,7 @@ core_run :: proc(engine: ^Engine) {
             
             #partial switch event.type {
                 case .QUIT:
+                    log_info(.CORE, "Quit event received")
                     engine.is_running = false
                 case .KEY_DOWN:
                     if event.key.scancode == .ESCAPE {
@@ -156,7 +159,7 @@ core_run :: proc(engine: ^Engine) {
             // Game is paused, no updates but we'll still render
             log_verbose(.GAME, "Game paused")
         }
-
+        
         // Render based on current mode
         if engine.mode == .Game {
             // Render game view
@@ -165,7 +168,12 @@ core_run :: proc(engine: ^Engine) {
             // Render editor view
             editor_render(&engine.editor)
         }
+        
+        // Add a small delay to prevent spinning too fast
+        sdl.Delay(10)
     }
+    
+    log_info(.CORE, "Engine main loop exited")
 }
 
 core_update :: proc(engine: ^Engine) {
